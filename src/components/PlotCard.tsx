@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import type { PlotData, Layout } from 'plotly.js'
 import Plot from './Plot'
 
@@ -19,10 +20,11 @@ interface Props {
 export default function PlotCard({ data, layout, filename, height, light, autoTitle, title, showTitle, onTitle, note }: Props) {
   const text = (title ?? '').trim() || autoTitle
   // The title takes its own band above whatever the figure already keeps at
-  // the top (a top-side x axis, say), so the two never overlap.
-  const withTitle: Partial<Layout> = showTitle
+  // the top (a top-side x axis, say), so the two never overlap. Memoised so
+  // an unrelated re-render does not hand the plot a new layout to redraw.
+  const withTitle = useMemo<Partial<Layout>>(() => showTitle
     ? { ...layout, title: { text, x: 0.5, xanchor: 'center', y: 1, yanchor: 'top', pad: { t: 10 }, font: { size: 15 } }, margin: { ...(layout.margin ?? {}), t: (layout.margin?.t ?? 40) + 36 } }
-    : { ...layout, title: { text: '' } }
+    : { ...layout, title: { text: '' } }, [layout, text, showTitle])
   return (
     <div className={'plot-card' + (light ? ' light' : '')}>
       {showTitle && (
