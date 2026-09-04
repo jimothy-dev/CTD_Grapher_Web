@@ -61,6 +61,8 @@ export interface Settings {
   profileTitleText: Record<string, string>   // per variable, overrides the auto title
   profileGraphTheme: GraphTheme
   profileWidths: Record<string, number>      // per variable, percent of the row
+  // extra graphs of one variable against another (or depth), e.g. Temperature vs Salinity
+  customPairs: { x: string; y: string }[]
   // transect
   sectionVariables: Record<string, boolean>
   contourSteps: number
@@ -97,7 +99,7 @@ interface State {
 const DEFAULT_SETTINGS: Settings = {
   variables: {}, depthMin: '', depthMax: '', lineShape: 'spline', legendPos: 'right',
   yVariable: 'depth', yInvert: true, yLabelMode: 'side', profileTitles: true, profileTitleText: {},
-  profileGraphTheme: effectiveTheme('system'), profileWidths: {},
+  profileGraphTheme: effectiveTheme('system'), profileWidths: {}, customPairs: [],
   sectionVariables: { Temperature: true }, contourSteps: 0, rangeMode: 'fixed',
   palettes: {}, showMap: true, sectionTitles: true, sectionTitleText: {}, sectionGraphTheme: effectiveTheme('system'),
   colorbarName: false, theme: 'system',
