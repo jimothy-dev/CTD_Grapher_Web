@@ -64,18 +64,17 @@ export default function Stations() {
               <button className="btn tiny" onClick={() => setAllActive(false)}>all off</button>
             </div>
             <div className="row small muted">
-              <span>positions, all rows:</span>
+              <span>hemisphere, all rows:</span>
               <span className="seg">
                 <button onClick={() => setAllHemisphere('lat', 'N')}>N</button>
                 <button onClick={() => setAllHemisphere('lat', 'S')}>S</button>
               </span>
               <span className="seg">
-                <button onClick={() => setAllHemisphere('lon', 'E')}>E</button>
                 <button onClick={() => setAllHemisphere('lon', 'W')}>W</button>
+                <button onClick={() => setAllHemisphere('lon', 'E')}>E</button>
               </span>
             </div>
           </div>
-          <div className="station-head"><span></span><span>Station</span><span>Latitude</span><span>Longitude</span><span>Reads as</span><span>Active</span><span></span></div>
           <div className="stations">
             {stations.map(s => {
               const badLat = s.latText.trim() !== '' && s.lat === null
@@ -83,17 +82,25 @@ export default function Stations() {
               return (
                 <div key={s.id} className={'station' + (s.active ? '' : ' off')}>
                   <span className="dot" style={{ background: s.color }} />
-                  <div style={{ minWidth: 0 }}>
+                  <div className="who">
                     <input className="inline" value={s.name} onChange={e => rename(s.id, e.target.value)} aria-label="Station name" />
                     <div className="meta">{s.file} · {s.cast.nrows} rows{s.deepest !== null ? ` · to ${s.deepest.toFixed(0)} m` : ''}{s.dropped ? ' · downcast only' : ''}</div>
                   </div>
-                  <input className={'coord' + (badLat ? ' bad' : '')} value={s.latText} placeholder="latitude" aria-label="Latitude"
-                    onChange={e => setPosition(s.id, e.target.value, s.lonText)} />
-                  <input className={'coord' + (badLon ? ' bad' : '')} value={s.lonText} placeholder="longitude" aria-label="Longitude"
-                    onChange={e => setPosition(s.id, s.latText, e.target.value)} />
-                  <div className="conv">{s.lat !== null && s.lon !== null ? `${formatCoordinate(s.lat, 'lat')}  ${formatCoordinate(s.lon, 'lon')}` : (badLat || badLon ? 'not a coordinate' : 'only needed for the transect')}</div>
-                  <input type="checkbox" className="switch" checked={s.active} onChange={e => setActive(s.id, e.target.checked)} aria-label={`${s.name} active`} />
-                  <button className="btn quiet tiny" onClick={() => removeStation(s.id)} aria-label={`Remove ${s.name}`} title="Remove">✕</button>
+                  <div className="coords">
+                    <label className="field">latitude
+                      <input className={'coord' + (badLat ? ' bad' : '')} value={s.latText} placeholder="e.g. 47 24.072 N" aria-label="Latitude"
+                        onChange={e => setPosition(s.id, e.target.value, s.lonText)} />
+                    </label>
+                    <label className="field">longitude
+                      <input className={'coord' + (badLon ? ' bad' : '')} value={s.lonText} placeholder="e.g. 122 31.5 W" aria-label="Longitude"
+                        onChange={e => setPosition(s.id, s.latText, e.target.value)} />
+                    </label>
+                    <div className="conv">{s.lat !== null && s.lon !== null ? `${formatCoordinate(s.lat, 'lat')}  ${formatCoordinate(s.lon, 'lon')}` : (badLat || badLon ? 'not a coordinate' : 'only needed for the map and transect')}</div>
+                  </div>
+                  <div className="ctl">
+                    <label className="field" style={{ alignItems: 'center' }}>active<input type="checkbox" className="switch" checked={s.active} onChange={e => setActive(s.id, e.target.checked)} aria-label={`${s.name} active`} /></label>
+                    <button className="remove" onClick={() => removeStation(s.id)} aria-label={`Remove ${s.name}`}>remove</button>
+                  </div>
                 </div>
               )
             })}

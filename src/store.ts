@@ -1,7 +1,8 @@
-// One store for everything the pages share. It lives in memory only: uploads
-// and typed positions survive moving between pages, and are gone on reload.
+// One store for everything the pages share. Kept in memory and mirrored to
+// sessionStorage, so uploads and typed positions survive moving between pages,
+// following a link and coming back, and a reload; they go when the tab closes.
 import { create } from 'zustand'
-import { parseCnv, decodeCnv, stationName, naturalCompare, downcastOnly, deepest, type Cast } from './lib/cnv'
+import { parseCnv, decodeCnv, stationName, naturalCompare, downcastOnly, deepest, positionFromColumns, type Cast } from './lib/cnv'
 import { parseCoordinate } from './lib/geo'
 import { stationColor, type Clr } from './lib/colors'
 
@@ -20,9 +21,12 @@ export interface Station {
   dropped: number        // rows removed by the downcast cut, 0 if untouched
 }
 
-// A seafloor point: km from its station towards the neighbour `to` (a station
-// id, the next station when the point was added), and depth in m. Anchoring
-// to the neighbour means dragging the rows about cannot silently move it.
+// A seafloor point: km from its station towards `to`, and depth in m. `to` is
+// the neighbour's station id, or BEFORE / AFTER for a point out past the first
+// or last station, which extends the section. Anchoring to the neighbour means
+// dragging the rows about cannot silently move a point.
+export const BEFORE = '<before>'
+export const AFTER = '<after>'
 export interface Mid { d: number | null; z: number | null; to: string | null }
 
 export interface TransectState {
@@ -32,11 +36,24 @@ export interface TransectState {
   mids: Record<string, Mid[]>
 }
 
-interface Settings {
-  variables: Record<string, boolean>    // profiles page
+export type LegendPos = 'right' | 'left' | 'bottom'
+export type YLabelMode = 'side' | 'top'
+export type Theme = 'system' | 'light' | 'dark'
+
+export interface Settings {
+  // profiles
+  variables: Record<string, boolean>
   depthMin: string
   depthMax: string
   lineShape: 'spline' | 'linear'
+  legendPos: LegendPos
+  yVariable: string               // 'depth' or a variable name
+  yInvert: boolean
+  yLabelMode: YLabelMode
+  profileTitles: boolean
+  profileTitleText: Record<string, string>   // per variable, overrides the auto title
+  profileLight: boolean
+  // transect
   sectionVariables: Record<string, boolean>
   contourSteps: number
   rangeMode: 'fixed' | 'auto'
@@ -44,6 +61,12 @@ interface Settings {
   clrName: string
   useClr: boolean
   showMap: boolean
+  sectionTitles: boolean
+  sectionTitleText: Record<string, string>
+  sectionLight: boolean
+  colorbarName: boolean           // "Temperature (°C)" on the colour bar instead of "°C"
+  // site
+  theme: Theme
 }
 
 interface State {
@@ -62,6 +85,14 @@ interface State {
   moveInOrder: (from: number, to: number) => void
   setSettings: (patch: Partial<Settings>) => void
   dismissNotices: () => void
+}
+
+const DEFAULT_SETTINGS: Settings = {
+  variables: {}, depthMin: '', depthMax: '', lineShape: 'spline', legendPos: 'right',
+  yVariable: 'depth', yInvert: true, yLabelMode: 'side', profileTitles: true, profileTitleText: {}, profileLight: false,
+  sectionVariables: { Temperature: true }, contourSteps: 0, rangeMode: 'fixed',
+  clr: null, clrName: '', useClr: false, showMap: true, sectionTitles: true, sectionTitleText: {}, sectionLight: false,
+  colorbarName: false, theme: 'system',
 }
 
 let nextId = 1
@@ -86,9 +117,8 @@ function reconcile(t: TransectState, stations: Station[]): TransectState {
   const active = stations.filter(s => s.active)
   const ids = new Set(active.map(s => s.id))
   const order = t.order.filter(id => ids.has(id))
-  // newcomers north to south by known latitude, unpositioned last
   const newcomers = active.filter(s => !order.includes(s.id))
-    .sort((a, b) => (b.lat ?? -999) - (a.lat ?? -999))
+    .sort((a, b) => (b.lat ?? -999) - (a.lat ?? -999))          // north to south, unpositioned last
   for (const s of newcomers) order.push(s.id)
   const on: Record<string, boolean> = {}, labels: Record<string, string> = {}, mids: Record<string, Mid[]> = {}
   for (const id of order) {
@@ -99,14 +129,44 @@ function reconcile(t: TransectState, stations: Station[]): TransectState {
   return { order, on, labels, mids }
 }
 
+// ---- sessionStorage mirror -------------------------------------------------
+const KEY = 'ctd-grapher-v1'
+interface Saved { stations: (Omit<Station, 'cast'> & { cast: Omit<Cast, 'data'> & { data: number[][] } })[]; transect: TransectState; settings: Settings; nextId: number }
+
+function load(): { stations: Station[]; transect: TransectState; settings: Settings } | null {
+  try {
+    const raw = sessionStorage.getItem(KEY)
+    if (!raw) return null
+    const s = JSON.parse(raw) as Saved
+    const stations: Station[] = s.stations.map(st => ({ ...st, cast: { ...st.cast, data: st.cast.data.map(col => Float64Array.from(col.map(v => (v === null ? NaN : v)))) } }))
+    nextId = s.nextId ?? stations.length + 1
+    return { stations, transect: reconcile(s.transect, stations), settings: { ...DEFAULT_SETTINGS, ...s.settings } }
+  } catch { return null }
+}
+
+let saveTimer: ReturnType<typeof setTimeout> | null = null
+function scheduleSave(get: () => State) {
+  if (saveTimer) clearTimeout(saveTimer)
+  saveTimer = setTimeout(() => {
+    try {
+      const { stations, transect, settings } = get()
+      const saved: Saved = {
+        stations: stations.map(st => ({ ...st, cast: { ...st.cast, data: st.cast.data.map(col => Array.from(col, v => (Number.isNaN(v) ? null : v)) as unknown as number[]) } })),
+        transect, settings, nextId,
+      }
+      const text = JSON.stringify(saved)
+      if (text.length > 4_500_000) { sessionStorage.removeItem(KEY); return }   // too big for the quota: live in memory only
+      sessionStorage.setItem(KEY, text)
+    } catch { /* private mode or quota: memory only */ }
+  }, 400)
+}
+
+const restored = load()
+
 export const useStore = create<State>((set, get) => ({
-  stations: [],
-  transect: { order: [], on: {}, labels: {}, mids: {} },
-  settings: {
-    variables: {}, depthMin: '', depthMax: '', lineShape: 'spline',
-    sectionVariables: { Temperature: true }, contourSteps: 0, rangeMode: 'fixed',
-    clr: null, clrName: '', useClr: false, showMap: true,
-  },
+  stations: restored?.stations ?? [],
+  transect: restored?.transect ?? { order: [], on: {}, labels: {}, mids: {} },
+  settings: restored?.settings ?? DEFAULT_SETTINGS,
   notices: [],
 
   addFiles: files => {
@@ -125,8 +185,9 @@ export const useStore = create<State>((set, get) => ({
       }
       const name = stationName(f.name)
       const known = cast.meta.startTime ? EXAMPLE_POSITIONS[cast.meta.startTime] : undefined
-      const lat = cast.meta.lat ?? known?.[0] ?? null
-      const lon = cast.meta.lon ?? known?.[1] ?? null
+      const fromCols = positionFromColumns(cast)
+      const lat = cast.meta.lat ?? fromCols?.[0] ?? known?.[0] ?? null
+      const lon = cast.meta.lon ?? fromCols?.[1] ?? known?.[1] ?? null
       const existing = stations.find(s => s.name === name)
       const st: Station = {
         id: existing?.id ?? `s${nextId++}`, file: f.name, name, cast,
@@ -174,8 +235,7 @@ export const useStore = create<State>((set, get) => ({
       const raw = x[key].replace(/[NSEWnsew]/g, '').replace(/^\s*[-+]/, '').trim()
       if (!raw) return x
       const text = `${raw} ${hemi}`
-      const v = parseCoordinate(text, kind)
-      return { ...x, [key]: text, [kind]: v }
+      return { ...x, [key]: text, [kind]: parseCoordinate(text, kind) }
     }),
   })),
 
@@ -191,5 +251,7 @@ export const useStore = create<State>((set, get) => ({
   setSettings: patch => set(s => ({ settings: { ...s.settings, ...patch } })),
   dismissNotices: () => set({ notices: [] }),
 }))
+
+useStore.subscribe(() => scheduleSave(useStore.getState))
 
 export const selectActive = (s: State) => s.stations.filter(x => x.active)

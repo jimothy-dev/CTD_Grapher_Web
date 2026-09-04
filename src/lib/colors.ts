@@ -28,27 +28,37 @@ export const SCALES: Record<string, ColorStops> = {
 // Fixed colour ranges so a colour always means the same value from one survey
 // to the next. Chosen for Puget Sound; readings outside a range take the end
 // colour. Oxygen depends on the unit the cast carries.
-interface Default { scale: string; range: [number, number] | Record<string, [number, number]> | null }
+// range: [low, high], tick: colour bar tick spacing so labels land on round
+// numbers. Oxygen depends on the unit the cast carries.
+type Fixed = { range: [number, number]; tick: number }
+interface Default { scale: string; fixed: Fixed | Record<string, Fixed> | null }
 export const DEFAULTS: Record<string, Default> = {
-  'Temperature': { scale: 'thermal', range: [7, 14] },
-  'Salinity': { scale: 'haline', range: [26, 31] },
-  'Density (sigma-t)': { scale: 'dense', range: [19.5, 24] },
-  'Dissolved Oxygen': { scale: 'oxygen', range: { 'mg/l': [4, 12], 'ml/l': [2.5, 8.5], '% sat': [40, 120], 'mol/kg': [100, 380] } },
-  'Fluorescence': { scale: 'algae', range: [0, 5] },
-  'Beam Transmission': { scale: 'deep', range: [60, 100] },
-  'Turbidity': { scale: 'turbid', range: [0, 10] },
+  'Temperature': { scale: 'thermal', fixed: { range: [7, 14], tick: 1 } },
+  'Salinity': { scale: 'haline', fixed: { range: [26, 31], tick: 1 } },
+  'Density (sigma-t)': { scale: 'dense', fixed: { range: [19, 24], tick: 1 } },
+  'Dissolved Oxygen': { scale: 'oxygen', fixed: { 'mg/l': { range: [4, 12], tick: 1 }, 'ml/l': { range: [2, 9], tick: 1 }, '% sat': { range: [40, 120], tick: 10 }, 'mol/kg': { range: [100, 400], tick: 50 } } },
+  'Fluorescence': { scale: 'algae', fixed: { range: [0, 20], tick: 2 } },
+  'Beam Transmission': { scale: 'deep', fixed: { range: [60, 100], tick: 5 } },
+  'Turbidity': { scale: 'turbid', fixed: { range: [0, 10], tick: 1 } },
 }
 
-export function defaultScale(variable: string, units: string): { colorscale: ColorStops; range: [number, number] | null } {
-  const d = DEFAULTS[variable] ?? { scale: 'deep', range: null }
-  let range: [number, number] | null = null
-  if (Array.isArray(d.range)) range = d.range
-  else if (d.range) {
+// A round step for about n intervals across a span.
+export function niceStep(span: number, n = 8): number {
+  const raw = Math.max(Math.abs(span), 1e-9) / n
+  const mag = 10 ** Math.floor(Math.log10(raw))
+  return [1, 2, 2.5, 5, 10].map(m => m * mag).find(s => s >= raw) ?? raw
+}
+
+export function defaultScale(variable: string, units: string): { colorscale: ColorStops; range: [number, number] | null; tick: number } {
+  const d = DEFAULTS[variable] ?? { scale: 'deep', fixed: null }
+  let fixed: Fixed | null = null
+  if (d.fixed && 'range' in d.fixed) fixed = d.fixed as Fixed
+  else if (d.fixed) {
     const u = units.toLowerCase()
-    const hit = Object.entries(d.range).find(([k]) => u.includes(k))
-    range = hit ? hit[1] : null
+    const hit = Object.entries(d.fixed as Record<string, Fixed>).find(([k]) => u.includes(k))
+    fixed = hit ? hit[1] : null
   }
-  return { colorscale: SCALES[d.scale], range }
+  return { colorscale: SCALES[d.scale], range: fixed?.range ?? null, tick: fixed?.tick ?? 1 }
 }
 
 export function percentileRange(values: Iterable<number | null>, lo = 0.02, hi = 0.98): [number, number] | null {

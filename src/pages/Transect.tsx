@@ -1,12 +1,13 @@
 import { useMemo, useRef, useState, type ChangeEvent } from 'react'
 import { Link } from 'react-router-dom'
 import type { PlotData, Layout } from 'plotly.js'
-import { useStore, type Mid } from '../store'
+import { useStore, BEFORE, AFTER, type Mid } from '../store'
 import { availableVariables } from '../lib/cnv'
 import { buildSection, type SectionStation } from '../lib/section'
-import { parseClr } from '../lib/colors'
+import { parsePalette, PALETTE_EXTENSIONS } from '../lib/palettes'
 import { alongTrack } from '../lib/geo'
 import Plot from '../components/Plot'
+import PlotCard from '../components/PlotCard'
 
 const num = (s: string): number | null => { const v = parseFloat(s); return Number.isFinite(v) ? v : null }
 
@@ -19,8 +20,8 @@ function mapFigure(stations: { name: string; color: string; lat: number; lon: nu
   const data: Partial<PlotData>[] = []
   if (lineOrder.length > 1) data.push({ type: 'scattermap', mode: 'lines', lat: lineOrder.map(p => p.lat), lon: lineOrder.map(p => p.lon), line: { width: 2, color: '#555' }, hoverinfo: 'skip', showlegend: false, name: 'transect' } as unknown as Partial<PlotData>)
   for (const s of stations) data.push({
-    type: 'scattermap', mode: 'markers+text', lat: [s.lat], lon: [s.lon], name: s.name,
-    marker: { size: 13, color: s.color }, text: [s.name], textposition: 'top right', textfont: { size: 12 },
+    type: 'scattermap', mode: 'markers', lat: [s.lat], lon: [s.lon], name: s.name,
+    marker: { size: 13, color: s.color },
     hovertemplate: `<b>${s.name}</b><br>%{lat:.4f}, %{lon:.4f}<extra></extra>`,
   } as unknown as Partial<PlotData>)
   const layout = {
@@ -43,19 +44,18 @@ export default function Transect() {
   const [dragging, setDragging] = useState<number | null>(null)
 
   const orderIds = transect.order.filter(id => byId[id])
-  const chosen: SectionStation[] = orderIds
-    .filter(id => transect.on[id] && byId[id].lat !== null && byId[id].lon !== null)
-    .map(id => {
-      const s = byId[id]
-      return {
-        id, label: transect.labels[id]?.trim() || s.name, color: s.color, lat: s.lat!, lon: s.lon!, cast: s.cast,
-        mids: (transect.mids[id] ?? []).filter(m => m.d !== null && m.z !== null).map(m => ({ d: m.d!, z: m.z!, to: m.to })),
-      }
-    })
   const live = (id: string) => (transect.on[id] ?? true) && byId[id].lat !== null && byId[id].lon !== null
+  const liveIds = orderIds.filter(live)
+  const chosen: SectionStation[] = liveIds.map(id => {
+    const s = byId[id]
+    return {
+      id, label: transect.labels[id]?.trim() || s.name, color: s.color, lat: s.lat!, lon: s.lon!, cast: s.cast,
+      mids: (transect.mids[id] ?? []).filter(m => m.d !== null && m.z !== null).map(m => ({ d: m.d!, z: m.z!, to: m.to })),
+    }
+  })
   const nextLive = (i: number) => orderIds.slice(i + 1).find(live) ?? null
   const nameOf = (id: string | null) => (id && byId[id] ? (transect.labels[id]?.trim() || byId[id].name) : 'the next station')
-  const unplaced = orderIds.filter(id => transect.on[id] && (byId[id].lat === null || byId[id].lon === null)).map(id => byId[id].name)
+  const unplaced = orderIds.filter(id => (transect.on[id] ?? true) && !live(id)).map(id => byId[id].name)
 
   let dmin = num(settings.depthMin), dmax = num(settings.depthMax)
   if (dmin !== null && dmax !== null && dmin > dmax) [dmin, dmax] = [dmax, dmin]
@@ -66,7 +66,7 @@ export default function Transect() {
     result: buildSection(chosen, {
       variable: v.name, shorts: v.shorts, depthMin: dmin, depthMax: dmax, nContours: settings.contourSteps,
       colorscale: settings.useClr && settings.clr ? settings.clr.stops : null,
-      range: settings.rangeMode === 'auto' ? 'auto' : null,
+      range: settings.rangeMode === 'auto' ? 'auto' : null, colorbarName: settings.colorbarName,
     }),
   })),
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -78,9 +78,9 @@ export default function Transect() {
   [stations, transect])
   const distances = chosen.length > 1 ? alongTrack(chosen) : []
 
-  const onClr = async (e: ChangeEvent<HTMLInputElement>) => {
+  const onPalette = async (e: ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]; if (!f) return
-    try { setSettings({ clr: parseClr(await f.text()), clrName: f.name, useClr: true }) }
+    try { setSettings({ clr: parsePalette(await f.text(), f.name), clrName: f.name, useClr: true }) }
     catch (err) { alert((err as Error).message) }
     e.target.value = ''
   }
@@ -89,8 +89,14 @@ export default function Transect() {
     mids[j][key] = num(value)
     setTransect({ mids: { ...transect.mids, [id]: mids } })
   }
+  const addMid = (id: string, to: string | null) => setTransect({ mids: { ...transect.mids, [id]: [...(transect.mids[id] ?? []), { d: null, z: null, to }] } })
+  const whither = (m: Mid) => m.to === BEFORE ? 'before the line' : m.to === AFTER ? 'beyond the line' : `towards ${nameOf(m.to)}`
 
   if (active.length < 2) return <div className="empty">A transect needs at least two active stations. <Link to="/">Add or switch some on.</Link></div>
+
+  const seg = <T extends string>(value: T, options: [T, string][], set: (v: T) => void) => (
+    <span className="seg">{options.map(([v, label]) => <button key={v} className={value === v ? 'on' : ''} onClick={() => set(v)}>{label}</button>)}</span>
+  )
 
   return (
     <div className="grid-2">
@@ -106,7 +112,8 @@ export default function Transect() {
               const s = byId[id]
               const placedHere = s.lat !== null && s.lon !== null
               const mids = transect.mids[id] ?? []
-              const canAdd = live(id) && nextLive(i) !== null
+              const isLive = live(id)
+              const first = liveIds[0] === id, lastLive = liveIds[liveIds.length - 1] === id
               return (
                 <div key={id} draggable className={'item' + (transect.on[id] ? '' : ' off') + (dragging === i ? ' dragging' : '') + (overIdx === i ? ' over' : '')}
                   onDragStart={e => { dragFrom.current = i; setDragging(i); e.dataTransfer.effectAllowed = 'move' }}
@@ -119,21 +126,27 @@ export default function Transect() {
                     <span className="n">{i + 1}</span>
                     <input type="checkbox" checked={transect.on[id] ?? true} onChange={e => setTransect({ on: { ...transect.on, [id]: e.target.checked } })} aria-label={`${s.name} on the transect`} />
                     <span className="dot" style={{ background: s.color }} />
-                    <input className="inline name" value={transect.labels[id] ?? ''} placeholder={s.name} title="Label shown above this station on the section"
-                      onChange={e => setTransect({ labels: { ...transect.labels, [id]: e.target.value } })} />
-                  </div>
-                  <div className="sub">
+                    <span className="sname">{s.name}</span>
                     {placedHere
                       ? <span className="pos">{s.lat!.toFixed(4)}, {s.lon!.toFixed(4)}</span>
-                      : <span className="pos missing"><Link to="/">no position, add it on Stations</Link></span>}
-                    {canAdd && <button className="add" title="A depth in metres known between this station and the next, read off a chart. Shapes the seafloor; the colour between stations stretches down to meet it."
-                      onClick={() => setTransect({ mids: { ...transect.mids, [id]: [...mids, { d: null, z: null, to: nextLive(i) }] } })}>+ seafloor point</button>}
+                      : <span className="pos missing"><Link to="/">no position</Link></span>}
+                  </div>
+                  <div className="sub">
+                    <label className="lab">label on graph
+                      <input className="inline name" value={transect.labels[id] ?? ''} placeholder={s.name}
+                        onChange={e => setTransect({ labels: { ...transect.labels, [id]: e.target.value } })} aria-label={`Label for ${s.name} on the section`} />
+                    </label>
+                    <span className="adds">
+                      {isLive && first && liveIds.length > 1 && <button className="add" title="A seafloor depth out past this station, extending the section that way" onClick={() => addMid(id, BEFORE)}>+ point before</button>}
+                      {isLive && nextLive(i) !== null && <button className="add" title="A depth in metres known between this station and the next, read off a chart. Shapes the seafloor; the colour between stations stretches down to meet it." onClick={() => addMid(id, nextLive(i))}>+ seafloor point</button>}
+                      {isLive && lastLive && liveIds.length > 1 && <button className="add" title="A seafloor depth out past this station, extending the section that way" onClick={() => addMid(id, AFTER)}>+ point after</button>}
+                    </span>
                   </div>
                   {mids.length > 0 && (
                     <div className="mids">
                       {mids.map((m, j) => (
                         <div key={j} className="mid">
-                          <span className="to">↳ towards {nameOf(m.to)}</span>
+                          <span className="to">↳ {whither(m)}</span>
                           <span className="vals">
                             <input type="number" step="0.01" min="0" placeholder="km" value={m.d ?? ''} onChange={e => setMid(id, j, 'd', e.target.value)} aria-label="km from this station" /> km,
                             <input type="number" step="0.1" min="0" placeholder="m" value={m.z ?? ''} onChange={e => setMid(id, j, 'z', e.target.value)} aria-label="depth in metres" /> m deep
@@ -169,19 +182,19 @@ export default function Transect() {
             </label>
           </div>
           <div className="row" style={{ marginTop: 10 }}>
-            <label className="field">colour range
-              <span className="seg">
-                <button className={settings.rangeMode === 'fixed' ? 'on' : ''} onClick={() => setSettings({ rangeMode: 'fixed' })} title="Same colour for the same value on every section">fixed</button>
-                <button className={settings.rangeMode === 'auto' ? 'on' : ''} onClick={() => setSettings({ rangeMode: 'auto' })} title="Stretched to this survey">this survey</button>
-              </span>
-            </label>
+            <label className="field">colour range{seg(settings.rangeMode, [['fixed', 'fixed'], ['auto', 'this survey']], v => setSettings({ rangeMode: v }))}</label>
+            <label className="field">colour bar label{seg(settings.colorbarName ? 'name' : 'units', [['units', 'units'], ['name', 'name and units']], v => setSettings({ colorbarName: v === 'name' }))}</label>
+          </div>
+          <div className="row" style={{ marginTop: 10 }}>
             <label className="field">colours
               <span className="row">
-                <label className="btn tiny">Surfer .clr<input type="file" accept=".clr,.txt" onChange={onClr} style={{ display: 'none' }} /></label>
+                <label className="btn tiny" title={`Palette file: ${PALETTE_EXTENSIONS.join(', ')}`}>palette file<input type="file" accept={PALETTE_EXTENSIONS.join(',')} onChange={onPalette} style={{ display: 'none' }} /></label>
                 {settings.clr && <label className={'chip' + (settings.useClr ? ' on' : '')}><input type="checkbox" checked={settings.useClr} onChange={e => setSettings({ useClr: e.target.checked })} />{settings.clrName}</label>}
               </span>
             </label>
             <label className="field">map<input type="checkbox" className="switch" checked={settings.showMap} onChange={e => setSettings({ showMap: e.target.checked })} /></label>
+            <label className="field">titles<input type="checkbox" className="switch" checked={settings.sectionTitles} onChange={e => setSettings({ sectionTitles: e.target.checked })} /></label>
+            <label className="field">light graphs<input type="checkbox" className="switch" checked={settings.sectionLight} onChange={e => setSettings({ sectionLight: e.target.checked })} /></label>
           </div>
           {settings.clr && settings.clr.warnings.length > 0 && <p className="small muted" style={{ marginTop: 6 }}>{settings.clr.warnings.join('; ')}</p>}
         </div>
@@ -189,15 +202,15 @@ export default function Transect() {
 
       <div className="stack">
         {settings.showMap && map && (
-          <div className="plot-card"><Plot data={map.data} layout={map.layout} filename="station_map" height={420} /></div>
+          <div className={'plot-card' + (settings.sectionLight ? ' light' : '')}><Plot data={map.data} layout={map.layout} filename="station_map" height={420} light={settings.sectionLight} /></div>
         )}
         {chosen.length < 2 && <div className="empty">Tick at least two positioned stations to draw a section.</div>}
         {chosen.length >= 2 && sections.length === 0 && <div className="empty">Tick a variable to draw its section.</div>}
         {sections.map(({ variable, result }) => result ? (
-          <div key={variable} className="plot-card">
-            <Plot data={result.data} layout={result.layout} filename={`${variable.replace(/\W+/g, '_')}_section`} height={520} />
-            {(result.used > 0 || result.skipped.length > 0) && <div className="note">{[result.used ? `${result.used} seafloor point${result.used === 1 ? '' : 's'} used` : '', ...result.skipped].filter(Boolean).join(' · ')}</div>}
-          </div>
+          <PlotCard key={variable} data={result.data} layout={result.layout} filename={`${variable.replace(/\W+/g, '_')}_section`} height={520}
+            light={settings.sectionLight} autoTitle={result.autoTitle} title={settings.sectionTitleText[variable]} showTitle={settings.sectionTitles}
+            onTitle={t => setSettings({ sectionTitleText: { ...settings.sectionTitleText, [variable]: t } })}
+            note={result.notes.length ? result.notes.join(' · ') : undefined} />
         ) : <div key={variable} className="note muted small">{variable}: not in every chosen station.</div>)}
         <p className="muted small">Everything between the station markers is interpolated. The black seafloor joins each cast's deepest reading and any seafloor points you add; it is not surveyed bathymetry.</p>
       </div>

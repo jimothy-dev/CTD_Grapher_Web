@@ -191,6 +191,21 @@ export function downcastOnly(cast: Cast): { cast: Cast; dropped: number } {
   return { cast: { ...cast, data, nrows: keep.length }, dropped: cast.nrows - keep.length }
 }
 
+// Some deck units append position to every scan: latitude/longitude columns.
+// Their median is a fair cast position when the header has none.
+export function positionFromColumns(cast: Cast): [number, number] | null {
+  const find = (re: RegExp) => cast.columns.find(c => re.test(c.short) || re.test(c.desc))
+  const la = find(/^lat/i), lo = find(/^lon/i)
+  if (!la || !lo) return null
+  const median = (arr: Float64Array) => {
+    const v = Array.from(arr).filter(Number.isFinite).sort((a, b) => a - b)
+    return v.length ? v[Math.floor(v.length / 2)] : NaN
+  }
+  const lat = median(cast.data[la.index]), lon = median(cast.data[lo.index])
+  if (!(Math.abs(lat) <= 90 && Math.abs(lon) <= 180) || (lat === 0 && lon === 0)) return null
+  return [lat, lon]
+}
+
 export function deepest(cast: Cast): number | null {
   const d = depthColumn(cast)
   if (!d) return null
