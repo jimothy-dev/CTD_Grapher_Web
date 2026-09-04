@@ -22,6 +22,27 @@ export interface SectionStation {
   // seafloor points: km from here towards the station `to` (an id, or BEFORE /
   // AFTER for a point out past the first or last station), depth m
   mids: { d: number; z: number; to: string | null }[]
+  // waypoints routing the line from this station to the next, in order; a
+  // depth makes one a seafloor point at its place on the route
+  route?: { lat: number; lon: number; depth: number | null }[]
+}
+
+// Cumulative distance along the routed line: station, its waypoints, next
+// station. Also returns each waypoint's own distance for its seafloor depth.
+export function routeDistances(stations: SectionStation[]): { dist: number[]; waypointPts: [number, number][] } {
+  const dist = [0]
+  const waypointPts: [number, number][] = []
+  for (let i = 1; i < stations.length; i++) {
+    const prev = stations[i - 1]
+    const legs = [{ lat: prev.lat, lon: prev.lon }, ...(prev.route ?? []), { lat: stations[i].lat, lon: stations[i].lon }]
+    const along = alongTrack(legs)
+    for (let k = 1; k < legs.length - 1; k++) {
+      const w = (prev.route ?? [])[k - 1]
+      if (w.depth !== null && w.depth > 0) waypointPts.push([dist[i - 1] + along[k], w.depth])
+    }
+    dist.push(dist[i - 1] + along[along.length - 1])
+  }
+  return { dist, waypointPts }
 }
 
 export interface SectionOptions {
@@ -86,7 +107,7 @@ export function buildSection(stations: SectionStation[], opts: SectionOptions): 
   if (stations.length < 2) return null
   const profs = stations.map(s => profile(s.cast, opts.shorts))
   if (profs.some(p => !p || !p.z.length)) return null
-  const dist = alongTrack(stations)
+  const { dist, waypointPts } = routeDistances(stations)
   const last = stations.length - 1
   const dmin = opts.depthMin ?? null, dmax = opts.depthMax ?? null
   const notes: string[] = []
@@ -109,6 +130,7 @@ export function buildSection(stations: SectionStation[], opts: SectionOptions): 
   // point before the first or after the last station extends the section.
   const floorPts: [number, number][] = dist.map((x, i) => [x, bottoms[i]])
   let used = 0
+  for (const p of waypointPts) { floorPts.push(p); used++ }
   const labelOf = (id: string | null) => (id === null ? null : stations.find(t => t.id === id)?.label ?? null)
   let xMin = dist[0], xMax = dist[last]
   stations.forEach((s, i) => {

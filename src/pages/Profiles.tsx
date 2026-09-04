@@ -75,7 +75,7 @@ export default function Profiles() {
       <div className="row" style={{ justifyContent: 'space-between', alignItems: 'end' }}>
         <div>
           <h1>Profiles</h1>
-          <p className="muted small">Each active station as a line. Click a name in a legend to hide it.</p>
+          <p className="muted small">Vertical profiles: each cast as a line against depth. Click a name in a legend to hide it.</p>
         </div>
       </div>
       <div className="row">

@@ -160,6 +160,7 @@ input.inline::placeholder { color: var(--muted); opacity: 1; }
 .item .mid .vals { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
 .item .mid input { width: 64px; padding: 3px 6px; border: 1px solid var(--rule); border-radius: 6px; background: var(--ground); color: var(--ink); font-family: var(--mono); font-size: 12px; }
 .item .mid .x { color: var(--danger); background: none; border: 0; cursor: pointer; padding: 0 4px; font-size: 14px; }
+.item .mid.wp .to { color: var(--accent); }
 
 /* about */
 .about { max-width: 62ch; }

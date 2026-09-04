@@ -1,0 +1,19 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "CTD Grapher"
+type: software
+authors:
+  - family-names: Simpson
+    given-names: James
+repository-code: "https://github.com/jimothy-dev/CTD_Grapher_Web"
+url: "https://jimothy-dev.github.io/CTD_Grapher_Web/"
+abstract: "Depth profiles and transect sections from Sea-Bird .cnv CTD casts, drawn in the browser."
+license: GPL-3.0
+version: "1.0.0"
+date-released: "2026-09-04"
+keywords:
+  - CTD
+  - oceanography
+  - Sea-Bird
+  - transect
+  - Plotly

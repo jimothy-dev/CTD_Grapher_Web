@@ -29,11 +29,17 @@ export const BEFORE = '<before>'
 export const AFTER = '<after>'
 export interface Mid { d: number | null; z: number | null; to: string | null }
 
+// A waypoint routes the line between a station and the next one on the
+// transect, so the distance runs through it instead of straight across
+// land. With a depth it is also a seafloor point at its place on the route.
+export interface Waypoint { id: string; after: string; lat: number; lon: number; depth: number | null }
+
 export interface TransectState {
   order: string[]                       // station ids
   on: Record<string, boolean>
   labels: Record<string, string>
   mids: Record<string, Mid[]>
+  waypoints: Waypoint[]
 }
 
 export type LegendPos = 'right' | 'left' | 'bottom'
@@ -136,7 +142,8 @@ function reconcile(t: TransectState, stations: Station[]): TransectState {
     labels[id] = t.labels[id] ?? ''
     mids[id] = t.mids[id] ?? []
   }
-  return { order, on, labels, mids }
+  const waypoints = (t.waypoints ?? []).filter(w => ids.has(w.after))
+  return { order, on, labels, mids, waypoints }
 }
 
 // ---- sessionStorage mirror -------------------------------------------------
@@ -175,7 +182,7 @@ const restored = load()
 
 export const useStore = create<State>((set, get) => ({
   stations: restored?.stations ?? [],
-  transect: restored?.transect ?? { order: [], on: {}, labels: {}, mids: {} },
+  transect: restored?.transect ?? { order: [], on: {}, labels: {}, mids: {}, waypoints: [] },
   settings: restored?.settings ?? DEFAULT_SETTINGS,
   notices: [],
 

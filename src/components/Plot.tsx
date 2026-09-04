@@ -10,6 +10,7 @@ interface Props {
   height?: number
   theme: GraphTheme      // the graph's own look, independent of the site
   className?: string
+  onReady?: (gd: PlotlyHTMLElement) => void   // after each draw, for pages that hook the figure
 }
 
 // Fixed palettes, so a graph can be dark on a light site and the other way
@@ -39,10 +40,12 @@ function pngButton(filename: string): ModeBarButton {
   }
 }
 
-export default function Plot({ data, layout, filename = 'chart', height = 520, theme, className }: Props) {
+export default function Plot({ data, layout, filename = 'chart', height = 520, theme, className, onReady }: Props) {
   const ref = useRef<HTMLDivElement>(null)
   const themeRef = useRef(theme)
   themeRef.current = theme
+  const readyRef = useRef(onReady)
+  readyRef.current = onReady
 
   // Full draw only when the figure itself changes.
   useEffect(() => {
@@ -61,7 +64,7 @@ export default function Plot({ data, layout, filename = 'chart', height = 520, t
       responsive: true, displaylogo: false,
       modeBarButtonsToRemove: ['toImage'],
       modeBarButtonsToAdd: [pngButton(filename)],
-    })
+    }).then(gd => readyRef.current?.(gd as PlotlyHTMLElement), () => { /* purged mid-draw */ })
   }, [data, layout, filename])
 
   // A theme change only restyles colours: relayout is cheap where a full

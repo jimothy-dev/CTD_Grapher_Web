@@ -7,12 +7,23 @@ export function haversineKm(lat1: number, lon1: number, lat2: number, lon2: numb
   return 2 * R * Math.asin(Math.sqrt(a))
 }
 
-// Cumulative straight-line distance along a list of positions, in km.
+// Cumulative distance along a list of positions, in km.
 export function alongTrack(points: { lat: number; lon: number }[]): number[] {
   const x = [0]
   for (let i = 1; i < points.length; i++)
     x.push(x[i - 1] + haversineKm(points[i - 1].lat, points[i - 1].lon, points[i].lat, points[i].lon))
   return x
+}
+
+// Where a point falls along the straight line from a to b, as a fraction
+// (0 at a, 1 at b), measured in a flat local frame. Used to keep waypoints
+// in the order they lie along their segment.
+export function fractionAlong(a: { lat: number; lon: number }, b: { lat: number; lon: number }, p: { lat: number; lon: number }): number {
+  const k = Math.cos((a.lat * Math.PI) / 180)
+  const bx = (b.lon - a.lon) * k, by = b.lat - a.lat
+  const px = (p.lon - a.lon) * k, py = p.lat - a.lat
+  const d2 = bx * bx + by * by
+  return d2 ? (px * bx + py * by) / d2 : 0
 }
 
 // Any usual coordinate format:

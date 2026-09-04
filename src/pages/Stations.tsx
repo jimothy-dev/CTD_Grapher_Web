@@ -4,6 +4,9 @@ import { formatCoordinate } from '../lib/geo'
 
 const EXAMPLE_BASE = 'https://raw.githubusercontent.com/jimothy-dev/CTD_Grapher_v2/main/example_data/'
 const EXAMPLES = ['Station_11.cnv', 'Station_12.cnv', 'Station_15.cnv', 'Station_16.cnv', 'Station_17.cnv']
+// casts from other instruments and places, shipped with the app (see public/samples/SOURCES.md)
+const SAMPLE_BASE = `${import.meta.env.BASE_URL}samples/`
+const SAMPLES = ['NCEI_GulfOfMexico_2010_SBE9.cnv', 'OOI_Pioneer_2015_SBE9.cnv', 'NorthSea_2017_SBE25plus.cnv', 'Nansen_2008_SBE9.cnv', 'Hakai_Quadra_2024_SBE19plus.cnv']
 
 export default function Stations() {
   const stations = useStore(s => s.stations)
@@ -19,14 +22,20 @@ export default function Stations() {
   }
   const onDrop = (e: DragEvent) => { e.preventDefault(); setOver(false); void take(e.dataTransfer.files) }
   const onPick = (e: ChangeEvent<HTMLInputElement>) => { if (e.target.files) void take(e.target.files); e.target.value = '' }
-  const loadExamples = async () => {
+  const fetchAll = async (base: string, names: string[], what: string) => {
     setBusy(true)
     try {
-      const files = await Promise.all(EXAMPLES.map(async n => ({ name: n, buffer: await (await fetch(EXAMPLE_BASE + n)).arrayBuffer() })))
+      const files = await Promise.all(names.map(async n => {
+        const r = await fetch(base + n)
+        if (!r.ok) throw new Error(`${n}: ${r.status}`)
+        return { name: n, buffer: await r.arrayBuffer() }
+      }))
       addFiles(files)
-    } catch { alert('Could not fetch the example casts. Check the connection and try again.') }
+    } catch { alert(`Could not fetch the ${what}. Check the connection and try again.`) }
     setBusy(false)
   }
+  const loadExamples = () => fetchAll(EXAMPLE_BASE, EXAMPLES, 'example casts')
+  const loadSamples = () => fetchAll(SAMPLE_BASE, SAMPLES, 'sample casts')
 
   const activeCount = stations.filter(s => s.active).length
   return (
@@ -36,7 +45,10 @@ export default function Stations() {
           <h1>Stations</h1>
           <p className="muted small">Add Sea-Bird <span className="mono">.cnv</span> casts. Switch stations in and out of the active set; both tools graph the active ones.</p>
         </div>
-        <button className="btn" onClick={loadExamples} disabled={busy}>{busy ? 'Loading…' : 'Load example casts'}</button>
+        <div className="row">
+          <button className="btn" onClick={loadExamples} disabled={busy} title="Five casts from Colvos and East Passage, Puget Sound, May 2026">{busy ? 'Loading…' : 'Load example casts'}</button>
+          <button className="btn quiet" onClick={loadSamples} disabled={busy} title="Casts from other instruments, places and decades, for trying things out (public data, see samples/SOURCES.md in the repository)">other public casts</button>
+        </div>
       </div>
 
       <div className={'drop' + (over ? ' over' : '')}
