@@ -57,9 +57,8 @@ export interface Settings {
   sectionVariables: Record<string, boolean>
   contourSteps: number
   rangeMode: 'fixed' | 'auto'
-  clr: Clr | null
-  clrName: string
-  useClr: boolean
+  // uploaded palettes by the variable they colour; '*' colours every section
+  palettes: Record<string, { clr: Clr; name: string }>
   showMap: boolean
   sectionTitles: boolean
   sectionTitleText: Record<string, string>
@@ -91,7 +90,7 @@ const DEFAULT_SETTINGS: Settings = {
   variables: {}, depthMin: '', depthMax: '', lineShape: 'spline', legendPos: 'right',
   yVariable: 'depth', yInvert: true, yLabelMode: 'side', profileTitles: true, profileTitleText: {}, profileLight: false,
   sectionVariables: { Temperature: true }, contourSteps: 0, rangeMode: 'fixed',
-  clr: null, clrName: '', useClr: false, showMap: true, sectionTitles: true, sectionTitleText: {}, sectionLight: false,
+  palettes: {}, showMap: true, sectionTitles: true, sectionTitleText: {}, sectionLight: false,
   colorbarName: false, theme: 'system',
 }
 

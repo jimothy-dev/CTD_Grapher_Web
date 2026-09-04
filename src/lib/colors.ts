@@ -79,7 +79,9 @@ export function percentileRange(values: Iterable<number | null>, lo = 0.02, hi =
 // Golden Software Surfer .clr colour map:
 //   ColorMap [Version] [InterpMethod] [ColorNodes] [OpacityNodes]
 //   Position(0-100) R G B [Alpha]   ... v3 adds "Position Opacity" lines after.
-export interface Clr { version: number; interp: number; stops: ColorStops; warnings: string[] }
+// levels: when a palette carries real values (Surfer .lvl, GMT .cpt, value
+// r g b lists) its first and last level set the colour range too.
+export interface Clr { version: number; interp: number; stops: ColorStops; warnings: string[]; levels?: number[] }
 export function parseClr(text: string): Clr {
   const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l && !l.startsWith("'"))
   const head = lines.shift() ?? ''

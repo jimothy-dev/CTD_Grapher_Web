@@ -61,14 +61,19 @@ export default function Transect() {
   if (dmin !== null && dmax !== null && dmin > dmax) [dmin, dmax] = [dmax, dmin]
   const isOn = (name: string) => settings.sectionVariables[name] ?? false
 
-  const sections = useMemo(() => variables.filter(v => isOn(v.name)).map(v => ({
-    variable: v.name,
-    result: buildSection(chosen, {
-      variable: v.name, shorts: v.shorts, depthMin: dmin, depthMax: dmax, nContours: settings.contourSteps,
-      colorscale: settings.useClr && settings.clr ? settings.clr.stops : null,
-      range: settings.rangeMode === 'auto' ? 'auto' : null, colorbarName: settings.colorbarName,
-    }),
-  })),
+  const sections = useMemo(() => variables.filter(v => isOn(v.name)).map(v => {
+    const pal = settings.palettes[v.name] ?? settings.palettes['*']
+    const levels = pal?.clr.levels
+    return {
+      variable: v.name,
+      result: buildSection(chosen, {
+        variable: v.name, shorts: v.shorts, depthMin: dmin, depthMax: dmax, nContours: settings.contourSteps,
+        colorscale: pal && pal.clr.stops.length ? pal.clr.stops : null,
+        range: levels ? [levels[0], levels[levels.length - 1]] : settings.rangeMode === 'auto' ? 'auto' : null,
+        colorbarName: settings.colorbarName,
+      }),
+    }
+  }),
   // eslint-disable-next-line react-hooks/exhaustive-deps
   [transect, stations, variables, settings, dmin, dmax])
 
@@ -78,12 +83,19 @@ export default function Transect() {
   [stations, transect])
   const distances = chosen.length > 1 ? alongTrack(chosen) : []
 
+  const [paletteFor, setPaletteFor] = useState<string>('')
+  const paletteTarget = paletteFor || variables.find(v => isOn(v.name))?.name || variables[0]?.name || '*'
   const onPalette = async (e: ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]; if (!f) return
-    try { setSettings({ clr: parsePalette(await f.text(), f.name), clrName: f.name, useClr: true }) }
-    catch (err) { alert((err as Error).message) }
+    try {
+      const clr = parsePalette(await f.text(), f.name)
+      // a palette with real values belongs to one variable; a position-only one may colour all
+      const key = paletteTarget === '*' && clr.levels ? (variables.find(v => isOn(v.name))?.name ?? variables[0]?.name ?? '*') : paletteTarget
+      setSettings({ palettes: { ...settings.palettes, [key]: { clr, name: f.name } } })
+    } catch (err) { alert((err as Error).message) }
     e.target.value = ''
   }
+  const dropPalette = (key: string) => { const p = { ...settings.palettes }; delete p[key]; setSettings({ palettes: p }) }
   const setMid = (id: string, j: number, key: 'd' | 'z', value: string) => {
     const mids: Mid[] = (transect.mids[id] ?? []).map(m => ({ ...m }))
     mids[j][key] = num(value)
@@ -186,17 +198,30 @@ export default function Transect() {
             <label className="field">colour bar label{seg(settings.colorbarName ? 'name' : 'units', [['units', 'units'], ['name', 'name and units']], v => setSettings({ colorbarName: v === 'name' }))}</label>
           </div>
           <div className="row" style={{ marginTop: 10 }}>
-            <label className="field">colours
+            <label className="field">palette file for
               <span className="row">
-                <label className="btn tiny" title={`Palette file: ${PALETTE_EXTENSIONS.join(', ')}`}>palette file<input type="file" accept={PALETTE_EXTENSIONS.join(',')} onChange={onPalette} style={{ display: 'none' }} /></label>
-                {settings.clr && <label className={'chip' + (settings.useClr ? ' on' : '')}><input type="checkbox" checked={settings.useClr} onChange={e => setSettings({ useClr: e.target.checked })} />{settings.clrName}</label>}
+                <select value={paletteTarget} onChange={e => setPaletteFor(e.target.value)} aria-label="Which section the palette colours">
+                  {variables.map(v => <option key={v.name} value={v.name}>{v.name}</option>)}
+                  <option value="*">all sections (position palettes only)</option>
+                </select>
+                <label className="btn tiny" title={`Palette file: ${PALETTE_EXTENSIONS.join(', ')}. Surfer .clr and .lvl, GMT .cpt, ODV .pal, Ferret .spk, NCL .rgb, and value r g b lists.`}>choose file<input type="file" accept={PALETTE_EXTENSIONS.join(',')} onChange={onPalette} style={{ display: 'none' }} /></label>
               </span>
             </label>
             <label className="field">map<input type="checkbox" className="switch" checked={settings.showMap} onChange={e => setSettings({ showMap: e.target.checked })} /></label>
             <label className="field">titles<input type="checkbox" className="switch" checked={settings.sectionTitles} onChange={e => setSettings({ sectionTitles: e.target.checked })} /></label>
             <label className="field">light graphs<input type="checkbox" className="switch" checked={settings.sectionLight} onChange={e => setSettings({ sectionLight: e.target.checked })} /></label>
           </div>
-          {settings.clr && settings.clr.warnings.length > 0 && <p className="small muted" style={{ marginTop: 6 }}>{settings.clr.warnings.join('; ')}</p>}
+          {Object.keys(settings.palettes).length > 0 && (
+            <div className="stack" style={{ gap: 4, marginTop: 8 }}>
+              {Object.entries(settings.palettes).map(([key, p]) => (
+                <div key={key} className="row small">
+                  <span className="chip on">{p.name}</span>
+                  <span className="muted">{key === '*' ? 'all sections' : key}{p.clr.warnings.length ? ` · ${p.clr.warnings.join('; ')}` : ''}</span>
+                  <button className="btn quiet tiny" onClick={() => dropPalette(key)}>remove</button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
