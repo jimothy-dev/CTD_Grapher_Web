@@ -149,9 +149,9 @@ export default function Transect() {
                         onChange={e => setTransect({ labels: { ...transect.labels, [id]: e.target.value } })} aria-label={`Label for ${s.name} on the section`} />
                     </label>
                     <span className="adds">
-                      {isLive && first && liveIds.length > 1 && <button className="add" title="A seafloor depth out past this station, extending the section that way" onClick={() => addMid(id, BEFORE)}>+ point before</button>}
-                      {isLive && nextLive(i) !== null && <button className="add" title="A depth in metres known between this station and the next, read off a chart. Shapes the seafloor; the colour between stations stretches down to meet it." onClick={() => addMid(id, nextLive(i))}>+ seafloor point</button>}
-                      {isLive && lastLive && liveIds.length > 1 && <button className="add" title="A seafloor depth out past this station, extending the section that way" onClick={() => addMid(id, AFTER)}>+ point after</button>}
+                      {isLive && first && liveIds.length > 1 && <button className="add" title="A seafloor depth in metres out past this station, extending the section that way" onClick={() => addMid(id, BEFORE)}>+ point before</button>}
+                      {isLive && nextLive(i) !== null && <button className="add" title="A seafloor depth in metres known between this station and the next, read off a chart. Shapes the seafloor; the colour between stations stretches down to meet it." onClick={() => addMid(id, nextLive(i))}>+ point after</button>}
+                      {isLive && lastLive && liveIds.length > 1 && <button className="add" title="A seafloor depth in metres out past this station, extending the section that way" onClick={() => addMid(id, AFTER)}>+ point after</button>}
                     </span>
                   </div>
                   {mids.length > 0 && (
@@ -190,7 +190,7 @@ export default function Transect() {
             <label className="field">from, m<input type="number" value={settings.depthMin} placeholder="surface" style={{ width: 88 }} onChange={e => setSettings({ depthMin: e.target.value })} /></label>
             <label className="field">to, m<input type="number" value={settings.depthMax} placeholder="bottom" style={{ width: 88 }} onChange={e => setSettings({ depthMax: e.target.value })} /></label>
             <label className="field" style={{ flex: 1, minWidth: 140 }}>contour steps: {settings.contourSteps || 'smooth'}
-              <input type="range" min={0} max={24} value={settings.contourSteps} onChange={e => setSettings({ contourSteps: +e.target.value })} />
+              <input type="range" min={0} max={50} value={settings.contourSteps} onChange={e => setSettings({ contourSteps: +e.target.value })} />
             </label>
           </div>
           <div className="row" style={{ marginTop: 10 }}>
@@ -198,18 +198,19 @@ export default function Transect() {
             <label className="field">colour bar label{seg(settings.colorbarName ? 'name' : 'units', [['units', 'units'], ['name', 'name and units']], v => setSettings({ colorbarName: v === 'name' }))}</label>
           </div>
           <div className="row" style={{ marginTop: 10 }}>
-            <label className="field">palette file for
+            <label className="field">your own colour palette, for
               <span className="row">
                 <select value={paletteTarget} onChange={e => setPaletteFor(e.target.value)} aria-label="Which section the palette colours">
                   {variables.map(v => <option key={v.name} value={v.name}>{v.name}</option>)}
                   <option value="*">all sections (position palettes only)</option>
                 </select>
-                <label className="btn tiny" title={`Palette file: ${PALETTE_EXTENSIONS.join(', ')}. Surfer .clr and .lvl, GMT .cpt, ODV .pal, Ferret .spk, NCL .rgb, and value r g b lists.`}>choose file<input type="file" accept={PALETTE_EXTENSIONS.join(',')} onChange={onPalette} style={{ display: 'none' }} /></label>
+                <label className="btn tiny" title={`Accepted: ${PALETTE_EXTENSIONS.join('  ')}\nSurfer .clr and .lvl, GMT .cpt, ODV .pal, Ferret .spk, NCL .rgb, SNAP .cpd, GIMP .ggr, ParaView .json/.xml, QGIS ramps, GRASS and GDAL rules.\nA file with real values also sets the colour range.`}>choose palette file<input type="file" accept={PALETTE_EXTENSIONS.join(',')} onChange={onPalette} style={{ display: 'none' }} /></label>
               </span>
+              <span className="hint">{PALETTE_EXTENSIONS.join(' ')}</span>
             </label>
             <label className="field">map<input type="checkbox" className="switch" checked={settings.showMap} onChange={e => setSettings({ showMap: e.target.checked })} /></label>
             <label className="field">titles<input type="checkbox" className="switch" checked={settings.sectionTitles} onChange={e => setSettings({ sectionTitles: e.target.checked })} /></label>
-            <label className="field">light graphs<input type="checkbox" className="switch" checked={settings.sectionLight} onChange={e => setSettings({ sectionLight: e.target.checked })} /></label>
+            <label className="field">graphs{seg(settings.sectionGraphTheme, [['light', 'light'], ['dark', 'dark']], v => setSettings({ sectionGraphTheme: v }))}</label>
           </div>
           {Object.keys(settings.palettes).length > 0 && (
             <div className="stack" style={{ gap: 4, marginTop: 8 }}>
@@ -227,13 +228,13 @@ export default function Transect() {
 
       <div className="stack">
         {settings.showMap && map && (
-          <div className={'plot-card' + (settings.sectionLight ? ' light' : '')}><Plot data={map.data} layout={map.layout} filename="station_map" height={420} light={settings.sectionLight} /></div>
+          <div className={`plot-card ${settings.sectionGraphTheme}`}><Plot data={map.data} layout={map.layout} filename="station_map" height={420} theme={settings.sectionGraphTheme} /></div>
         )}
         {chosen.length < 2 && <div className="empty">Tick at least two positioned stations to draw a section.</div>}
         {chosen.length >= 2 && sections.length === 0 && <div className="empty">Tick a variable to draw its section.</div>}
         {sections.map(({ variable, result }) => result ? (
           <PlotCard key={variable} data={result.data} layout={result.layout} filename={`${variable.replace(/\W+/g, '_')}_section`} height={520}
-            light={settings.sectionLight} autoTitle={result.autoTitle} title={settings.sectionTitleText[variable]} showTitle={settings.sectionTitles}
+            theme={settings.sectionGraphTheme} autoTitle={result.autoTitle} title={settings.sectionTitleText[variable]} showTitle={settings.sectionTitles}
             onTitle={t => setSettings({ sectionTitleText: { ...settings.sectionTitleText, [variable]: t } })}
             note={result.notes.length ? result.notes.join(' · ') : undefined} />
         ) : <div key={variable} className="note muted small">{variable}: not in every chosen station.</div>)}

@@ -39,6 +39,13 @@ export interface TransectState {
 export type LegendPos = 'right' | 'left' | 'bottom'
 export type YLabelMode = 'side' | 'top'
 export type Theme = 'system' | 'light' | 'dark'
+export type GraphTheme = 'light' | 'dark'
+
+// What the site looks like right now, given the setting and the system.
+export function effectiveTheme(theme: Theme): GraphTheme {
+  if (theme !== 'system') return theme
+  return typeof matchMedia === 'function' && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+}
 
 export interface Settings {
   // profiles
@@ -52,7 +59,8 @@ export interface Settings {
   yLabelMode: YLabelMode
   profileTitles: boolean
   profileTitleText: Record<string, string>   // per variable, overrides the auto title
-  profileLight: boolean
+  profileGraphTheme: GraphTheme
+  profileWidths: Record<string, number>      // per variable, percent of the row
   // transect
   sectionVariables: Record<string, boolean>
   contourSteps: number
@@ -62,7 +70,7 @@ export interface Settings {
   showMap: boolean
   sectionTitles: boolean
   sectionTitleText: Record<string, string>
-  sectionLight: boolean
+  sectionGraphTheme: GraphTheme
   colorbarName: boolean           // "Temperature (°C)" on the colour bar instead of "°C"
   // site
   theme: Theme
@@ -88,9 +96,10 @@ interface State {
 
 const DEFAULT_SETTINGS: Settings = {
   variables: {}, depthMin: '', depthMax: '', lineShape: 'spline', legendPos: 'right',
-  yVariable: 'depth', yInvert: true, yLabelMode: 'side', profileTitles: true, profileTitleText: {}, profileLight: false,
+  yVariable: 'depth', yInvert: true, yLabelMode: 'side', profileTitles: true, profileTitleText: {},
+  profileGraphTheme: effectiveTheme('system'), profileWidths: {},
   sectionVariables: { Temperature: true }, contourSteps: 0, rangeMode: 'fixed',
-  palettes: {}, showMap: true, sectionTitles: true, sectionTitleText: {}, sectionLight: false,
+  palettes: {}, showMap: true, sectionTitles: true, sectionTitleText: {}, sectionGraphTheme: effectiveTheme('system'),
   colorbarName: false, theme: 'system',
 }
 

@@ -1,24 +1,24 @@
 import { useEffect, useRef } from 'react'
 import Plotly from 'plotly.js-dist-min'
 import type { PlotData, Layout, LayoutAxis, ModeBarButton, PlotlyHTMLElement, DownloadImgopts } from 'plotly.js'
+import type { GraphTheme } from '../store'
 
 interface Props {
   data: Partial<PlotData>[]
   layout: Partial<Layout>
   filename?: string
   height?: number
-  light?: boolean      // draw on a light surface whatever the site theme
+  theme: GraphTheme      // the graph's own look, independent of the site
   className?: string
 }
 
-const css = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim()
-const LIGHT = { ink: '#1c2733', muted: '#5f6d78', surface: '#ffffff', grid: '#e6eae8' }
-
-function palette(light: boolean) {
-  return light
-    ? { ...LIGHT }
-    : { ink: css('--ink'), muted: css('--muted'), surface: css('--surface'), grid: css('--plot-grid') }
+// Fixed palettes, so a graph can be dark on a light site and the other way
+// round, and exports look the same everywhere.
+const PALETTES: Record<GraphTheme, { ink: string; muted: string; surface: string; grid: string }> = {
+  light: { ink: '#1c2733', muted: '#5f6d78', surface: '#ffffff', grid: '#e6eae8' },
+  dark: { ink: '#e6ecef', muted: '#98a5ae', surface: '#172028', grid: '#26313b' },
 }
+const css = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 
 // A PNG button that leaves stations switched off in the legend out of the
 // picture, the way the notebook's export does.
@@ -39,16 +39,16 @@ function pngButton(filename: string): ModeBarButton {
   }
 }
 
-export default function Plot({ data, layout, filename = 'chart', height = 520, light = false, className }: Props) {
+export default function Plot({ data, layout, filename = 'chart', height = 520, theme, className }: Props) {
   const ref = useRef<HTMLDivElement>(null)
-  const lightRef = useRef(light)
-  lightRef.current = light
+  const themeRef = useRef(theme)
+  themeRef.current = theme
 
   // Full draw only when the figure itself changes.
   useEffect(() => {
     const el = ref.current
     if (!el) return
-    const p = palette(lightRef.current)
+    const p = PALETTES[themeRef.current]
     const xa = (layout.xaxis ?? {}) as Partial<LayoutAxis>, ya = (layout.yaxis ?? {}) as Partial<LayoutAxis>
     const themed: Partial<Layout> = {
       ...layout,
@@ -64,33 +64,24 @@ export default function Plot({ data, layout, filename = 'chart', height = 520, l
     })
   }, [data, layout, filename])
 
-  // A theme change (site switch, system preference, the light-graphs switch)
-  // only restyles colours: relayout is cheap where a full redraw of several
-  // spline profiles takes seconds and froze the page.
+  // A theme change only restyles colours: relayout is cheap where a full
+  // redraw of several spline profiles takes seconds and froze the page.
   useEffect(() => {
     const el = ref.current
     if (!el) return
-    const recolour = () => {
-      const gd = el as unknown as { _fullLayout?: { xaxis?: unknown; map?: unknown } }
-      // A map draws its own tiles and has no themed parts; touching it while
-      // its style is still loading throws inside the map library.
-      if (!gd._fullLayout || gd._fullLayout.map) return
-      const p = palette(lightRef.current)
-      const update: Record<string, string> = { paper_bgcolor: p.surface, plot_bgcolor: p.surface, 'font.color': p.ink }
-      if (gd._fullLayout.xaxis) Object.assign(update, { 'xaxis.gridcolor': p.grid, 'yaxis.gridcolor': p.grid, 'xaxis.tickfont.color': p.muted, 'yaxis.tickfont.color': p.muted })
-      Plotly.relayout(el, update as unknown as Partial<Layout>).catch(() => { /* figure gone or mid-draw: nothing to recolour */ })
-    }
-    recolour()
-    const mq = matchMedia('(prefers-color-scheme: dark)')
-    mq.addEventListener('change', recolour)
-    const obs = new MutationObserver(recolour)
-    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
-    return () => { mq.removeEventListener('change', recolour); obs.disconnect() }
-  }, [light])
+    const gd = el as unknown as { _fullLayout?: { xaxis?: unknown; map?: unknown } }
+    // A map draws its own tiles and has no themed parts; touching it while
+    // its style is still loading throws inside the map library.
+    if (!gd._fullLayout || gd._fullLayout.map) return
+    const p = PALETTES[theme]
+    const update: Record<string, string> = { paper_bgcolor: p.surface, plot_bgcolor: p.surface, 'font.color': p.ink }
+    if (gd._fullLayout.xaxis) Object.assign(update, { 'xaxis.gridcolor': p.grid, 'yaxis.gridcolor': p.grid, 'xaxis.tickfont.color': p.muted, 'yaxis.tickfont.color': p.muted })
+    Plotly.relayout(el, update as unknown as Partial<Layout>).catch(() => { /* figure gone or mid-draw */ })
+  }, [theme])
 
   useEffect(() => {
     const el = ref.current
     return () => { if (el) Plotly.purge(el) }
   }, [])
-  return <div ref={ref} className={(className ?? '') + (light ? ' light-plot' : '')} style={{ width: '100%', height }} />
+  return <div ref={ref} className={className} style={{ width: '100%', height }} />
 }

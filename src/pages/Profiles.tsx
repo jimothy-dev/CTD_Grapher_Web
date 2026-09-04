@@ -70,14 +70,15 @@ export default function Profiles() {
         <label className="field">depth from, m<input type="number" value={settings.depthMin} placeholder="surface" style={{ width: 92 }} onChange={e => setSettings({ depthMin: e.target.value })} /></label>
         <label className="field">to, m<input type="number" value={settings.depthMax} placeholder="bottom" style={{ width: 92 }} onChange={e => setSettings({ depthMax: e.target.value })} /></label>
         <label className="field">titles<input type="checkbox" className="switch" checked={settings.profileTitles} onChange={e => setSettings({ profileTitles: e.target.checked })} /></label>
-        <label className="field">light graphs<input type="checkbox" className="switch" checked={settings.profileLight} onChange={e => setSettings({ profileLight: e.target.checked })} /></label>
+        <label className="field">graphs{seg(settings.profileGraphTheme, [['light', 'light'], ['dark', 'dark']], v => setSettings({ profileGraphTheme: v }))}</label>
       </div>
       {figures.length === 0 && <div className="empty">Nothing to draw. Tick a variable, or widen the depth window.</div>}
       <div className="plots">
         {figures.map(f => (
           <PlotCard key={f.variable} data={f.data} layout={f.layout} filename={f.variable.replace(/\W+/g, '_')} height={520}
-            light={settings.profileLight} autoTitle={f.autoTitle} title={settings.profileTitleText[f.variable]} showTitle={settings.profileTitles}
+            theme={settings.profileGraphTheme} autoTitle={f.autoTitle} title={settings.profileTitleText[f.variable]} showTitle={settings.profileTitles}
             onTitle={t => setSettings({ profileTitleText: { ...settings.profileTitleText, [f.variable]: t } })}
+            width={settings.profileWidths[f.variable] ?? 33} onWidth={w => setSettings({ profileWidths: { ...settings.profileWidths, [f.variable]: w } })}
             note={f.missing.length ? `not in: ${f.missing.join(', ')}` : undefined} />
         ))}
       </div>
