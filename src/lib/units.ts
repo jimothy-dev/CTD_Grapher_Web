@@ -3,7 +3,7 @@
 // for ordinary UI text.
 export function prettyUnits(u: string, html = true): string {
   let s = (u || '').trim()
-  s = s.replace(/^ITS-90,\s*/i, '').replace(/^IPTS-68,\s*/i, '').replace(/^PSS-78,?\s*/i, '')
+  s = s.replace(/^(ITS-90|ITS-68|IPTS-68|ITS-90 ),?\s*/i, '').replace(/^PSS-78,?\s*/i, '')
   s = s.replace(/^sigma-(t|theta|θ|é),\s*/i, '')
   s = s.replace(/deg C/gi, '°C').replace(/\bumol\b/gi, 'µmol').replace(/\bug\b/g, 'µg')
   s = s.replace(/\s+\]$/, '').trim()

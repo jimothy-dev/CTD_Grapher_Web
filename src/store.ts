@@ -182,6 +182,7 @@ export const useStore = create<State>((set, get) => ({
         const cut = downcastOnly(cast)
         cast = cut.cast; dropped = cut.dropped
         if (dropped) notices.push(`${f.name}: raw cast, kept the downcast (${dropped} rows dropped)`)
+        if (cut.timeSeries) notices.push(`${f.name}: looks like a time series at one depth rather than a cast, so nothing was cut`)
       }
       const name = stationName(f.name)
       const known = cast.meta.startTime ? EXAMPLE_POSITIONS[cast.meta.startTime] : undefined

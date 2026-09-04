@@ -84,7 +84,17 @@ export function parseCnv(text: string, filename = 'cast.cnv'): Cast {
   for (let i = dataStart; i < lines.length; i++) {
     const t = lines[i].trim()
     if (!t) continue
-    const parts = t.split(/\s+/)
+    let parts = t.split(/\s+/)
+    // Sea-Bird writes 11-character fields; a wide negative number can run into
+    // its neighbour with no space between, so fall back to fixed-width slicing.
+    if (parts.length !== ncol) {
+      const raw = lines[i].replace(/\r$/, '')
+      if (raw.length >= ncol * 11 - 1) {
+        const fixed: string[] = []
+        for (let c = 0; c < ncol; c++) fixed.push(raw.slice(c * 11, c * 11 + 11).trim())
+        if (fixed.every(f => f !== '' && !Number.isNaN(parseFloat(f)))) parts = fixed
+      }
+    }
     if (parts.length !== ncol) continue
     for (let c = 0; c < ncol; c++) {
       let v = parseFloat(parts[c])
@@ -174,8 +184,11 @@ export function profile(cast: Cast, shorts: string[]): Profile | null {
 
 // Keep the downcast only: cut at the deepest reading, then keep samples that
 // go monotonically deeper. A display fix for raw casts, not Sea-Bird
-// processing, and only applied when the header shows no loopedit step.
-export function downcastOnly(cast: Cast): { cast: Cast; dropped: number } {
+// processing, and only applied when the header shows no loopedit step. A
+// record that is not a cast at all (a moored instrument logging at one depth)
+// would be gutted by this, so it is left alone when the cut would keep under
+// a fifth of the rows; `timeSeries` says so.
+export function downcastOnly(cast: Cast): { cast: Cast; dropped: number; timeSeries?: boolean } {
   const d = depthColumn(cast)
   if (!d) return { cast, dropped: 0 }
   const z = cast.data[d.col.index]
@@ -187,6 +200,7 @@ export function downcastOnly(cast: Cast): { cast: Cast; dropped: number } {
     if (Number.isFinite(z[i]) && z[i] >= running) { keep.push(i); running = z[i] }
   }
   if (keep.length === cast.nrows) return { cast, dropped: 0 }
+  if (cast.nrows >= 50 && keep.length < cast.nrows * 0.2) return { cast, dropped: 0, timeSeries: true }
   const data = cast.data.map(col => Float64Array.from(keep.map(i => col[i])))
   return { cast: { ...cast, data, nrows: keep.length }, dropped: cast.nrows - keep.length }
 }

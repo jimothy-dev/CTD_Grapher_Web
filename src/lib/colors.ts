@@ -12,34 +12,43 @@ export function stationColor(index: number): string {
   return `hsl(${hue.toFixed(0)} 65% ${light}%)`
 }
 
-// Colour scales for section plots: approximations of cmocean's thermal,
-// haline, dense and algae, a diverging one for oxygen, a neutral fallback.
+// Colour scales for section plots: the cmocean maps (Thyng et al. 2016),
+// sampled at 11 evenly spaced rows of the 256-row tables, MIT licence.
+// oxy keeps its two hard edges at 0.2 and 0.8 of the range: below the first
+// is red (hypoxic), above the second yellow (supersaturated).
 export type ColorStops = [number, string][]
+const even = (hex: string[]): ColorStops => hex.map((h, i) => [i / (hex.length - 1), h])
 export const SCALES: Record<string, ColorStops> = {
-  thermal: [[0, '#042333'], [0.13, '#2c3395'], [0.25, '#744992'], [0.38, '#b04a86'], [0.5, '#dc4e7a'], [0.63, '#f56b5c'], [0.75, '#fb9b48'], [0.88, '#f8cf44'], [1, '#e8fa5b']],
-  haline: [[0, '#2a186c'], [0.13, '#1c3f9e'], [0.25, '#10618f'], [0.38, '#1a7a7a'], [0.5, '#2c9670'], [0.63, '#4db05a'], [0.75, '#8dc94a'], [0.88, '#cfdf4e'], [1, '#fdee99']],
-  dense: [[0, '#e6f1f1'], [0.2, '#a6cddc'], [0.4, '#6fa5d0'], [0.6, '#6a7fc1'], [0.8, '#6a4d9c'], [1, '#360e24']],
-  algae: [[0, '#d7f9d0'], [0.25, '#95d391'], [0.5, '#4aa869'], [0.75, '#1b7a4b'], [1, '#0a3f2c']],
-  oxygen: [[0, '#67001f'], [0.2, '#d6604d'], [0.4, '#fddbc7'], [0.5, '#f7f7f7'], [0.6, '#d1e5f0'], [0.8, '#4393c3'], [1, '#053061']],
-  deep: [[0, '#fdfecc'], [0.25, '#a5dfa7'], [0.5, '#4fa3a5'], [0.75, '#3b5a8f'], [1, '#281a2c']],
-  turbid: [[0, '#e9f5db'], [0.5, '#b08b4a'], [1, '#3b2a1a']],
+  thermal: even(['#042333', '#10326c', '#40349f', '#694496', '#8b538d', '#b15f82', '#d66c6c', '#f3824d', '#fca63c', '#f7d045', '#e8fa5b']),
+  haline: even(['#2a186c', '#2829a3', '#0d4e96', '#19678c', '#2d7c89', '#3c9387', '#4aaa81', '#65c172', '#94d35d', '#d0e06d', '#fdef9a']),
+  dense: even(['#e6f1f1', '#badbe5', '#96c5e2', '#7bace4', '#7390e3', '#7871d5', '#7954bb', '#743a98', '#682471', '#531546', '#360e24']),
+  algae: even(['#d7f9d0', '#b6e2ab', '#96cd8a', '#71ba6b', '#44a855', '#129450', '#097d4b', '#156641', '#1a5034', '#183a25', '#122414']),
+  oxy: [[0, '#400505'], [0.098, '#6a060f'], [0.2, '#8f1808'], [0.2, '#504f4f'], [0.298, '#676666'], [0.4, '#81807f'], [0.498, '#9a9a99'], [0.6, '#b7b7b6'], [0.698, '#d4d4d3'], [0.8, '#f4f4f3'], [0.8, '#f8fe69'], [0.898, '#e7d82d'], [1, '#ddaf19']],
+  turbid: even(['#e9f6ab', '#dbd886', '#cfbc66', '#c3a04d', '#b58740', '#a1703b', '#8a5e3a', '#704d37', '#563e30', '#3b2f27', '#221f1b']),
+  turbid_r: even(['#221f1b', '#3b2f27', '#563e30', '#704d37', '#8a5e3a', '#a1703b', '#b58740', '#c3a04d', '#cfbc66', '#dbd886', '#e9f6ab']),
+  matter: even(['#feedb0', '#fac98e', '#f5a773', '#ee835d', '#e26253', '#ce4356', '#b32e5f', '#932063', '#721a60', '#4f1652', '#2f0f3e']),
+  deep: even(['#fdfecc', '#c8eab1', '#92d8a4', '#65c2a4', '#52a8a3', '#488e9e', '#407598', '#3e5a92', '#41407b', '#382d51', '#281a2c']),
 }
 
 // Fixed colour ranges so a colour always means the same value from one survey
-// to the next. Chosen for Puget Sound; readings outside a range take the end
-// colour. Oxygen depends on the unit the cast carries.
-// range: [low, high], tick: colour bar tick spacing so labels land on round
-// numbers. Oxygen depends on the unit the cast carries.
+// to the next. Ends are round numbers and `tick` lands the colour bar labels
+// on whole numbers. Ranges come from long-term monitoring percentiles for
+// Puget Sound and temperate estuaries (King County offshore CTD, Ecology,
+// PSEMP, Alin et al. 2024); values outside a range take the end colour.
+// Oxygen depends on the unit the cast carries, and its ranges are chosen so
+// the oxy map's red edge sits at the 2 mg/L hypoxia threshold and its yellow
+// edge at 100 % saturation.
 type Fixed = { range: [number, number]; tick: number }
 interface Default { scale: string; fixed: Fixed | Record<string, Fixed> | null }
 export const DEFAULTS: Record<string, Default> = {
-  'Temperature': { scale: 'thermal', fixed: { range: [7, 14], tick: 1 } },
-  'Salinity': { scale: 'haline', fixed: { range: [26, 31], tick: 1 } },
-  'Density (sigma-t)': { scale: 'dense', fixed: { range: [19, 24], tick: 1 } },
-  'Dissolved Oxygen': { scale: 'oxygen', fixed: { 'mg/l': { range: [4, 12], tick: 1 }, 'ml/l': { range: [2, 9], tick: 1 }, '% sat': { range: [40, 120], tick: 10 }, 'mol/kg': { range: [100, 400], tick: 50 } } },
+  'Temperature': { scale: 'thermal', fixed: { range: [6, 20], tick: 2 } },
+  'Salinity': { scale: 'haline', fixed: { range: [20, 32], tick: 2 } },
+  'Density (sigma-t)': { scale: 'dense', fixed: { range: [18, 26], tick: 1 } },
+  'Dissolved Oxygen': { scale: 'oxy', fixed: { 'mg/l': { range: [0, 10], tick: 2 }, 'ml/l': { range: [0, 7], tick: 1 }, '% sat': { range: [0, 125], tick: 25 }, 'mol/kg': { range: [0, 350], tick: 50 } } },
   'Fluorescence': { scale: 'algae', fixed: { range: [0, 20], tick: 2 } },
-  'Beam Transmission': { scale: 'deep', fixed: { range: [60, 100], tick: 5 } },
-  'Turbidity': { scale: 'turbid', fixed: { range: [0, 10], tick: 1 } },
+  'Beam Transmission': { scale: 'turbid_r', fixed: { range: [50, 100], tick: 10 } },
+  'Turbidity': { scale: 'turbid', fixed: { range: [0, 5], tick: 1 } },
+  'CDOM': { scale: 'matter', fixed: null },
 }
 
 // A round step for about n intervals across a span.
