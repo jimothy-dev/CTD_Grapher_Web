@@ -123,14 +123,16 @@ input.inline:hover, input.inline:focus { border-color: var(--rule); background: 
 .item .line { display: flex; align-items: center; gap: 8px; padding: 7px 10px; }
 .item .grip { color: var(--muted); width: 12px; user-select: none; }
 .item .n { width: 16px; color: var(--muted); font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; }
-.item .name { flex: 1; min-width: 0; }
+.item .name { flex: 1; min-width: 100px; }
+.item .sub { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 10px 7px 44px; flex-wrap: wrap; }
 .item .pos { font-size: 11px; font-family: var(--mono); color: var(--muted); white-space: nowrap; }
 .item .pos.missing { color: var(--danger); font-family: var(--sans); }
 .item .pos.missing a { color: inherit; }
 .item .add { color: var(--accent); font-size: 12px; background: none; border: 0; cursor: pointer; padding: 2px 4px; white-space: nowrap; }
-.item .mids { padding: 0 10px 8px 44px; display: flex; flex-direction: column; gap: 4px; }
-.item .mid { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
-.item .mid input { width: 68px; padding: 3px 6px; border: 1px solid var(--rule); border-radius: 6px; background: var(--ground); color: var(--ink); font-family: var(--mono); font-size: 12px; }
+.item .mids { padding: 0 10px 8px 44px; display: flex; flex-direction: column; gap: 6px; }
+.item .mid { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); }
+.item .mid .vals { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.item .mid input { width: 64px; padding: 3px 6px; border: 1px solid var(--rule); border-radius: 6px; background: var(--ground); color: var(--ink); font-family: var(--mono); font-size: 12px; }
 .item .mid .x { color: var(--danger); background: none; border: 0; cursor: pointer; padding: 0 4px; font-size: 14px; }
 
 /* about */

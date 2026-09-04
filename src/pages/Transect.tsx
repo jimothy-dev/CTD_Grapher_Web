@@ -120,10 +120,12 @@ export default function Transect() {
                     <input type="checkbox" checked={transect.on[id] ?? true} onChange={e => setTransect({ on: { ...transect.on, [id]: e.target.checked } })} aria-label={`${s.name} on the transect`} />
                     <span className="dot" style={{ background: s.color }} />
                     <input className="inline name" value={transect.labels[id] ?? ''} placeholder={s.name} title="Label shown above this station on the section"
-                      onMouseDown={e => e.stopPropagation()} onChange={e => setTransect({ labels: { ...transect.labels, [id]: e.target.value } })} />
+                      onChange={e => setTransect({ labels: { ...transect.labels, [id]: e.target.value } })} />
+                  </div>
+                  <div className="sub">
                     {placedHere
                       ? <span className="pos">{s.lat!.toFixed(4)}, {s.lon!.toFixed(4)}</span>
-                      : <span className="pos missing"><Link to="/">no position</Link></span>}
+                      : <span className="pos missing"><Link to="/">no position, add it on Stations</Link></span>}
                     {canAdd && <button className="add" title="A depth in metres known between this station and the next, read off a chart. Shapes the seafloor; the colour between stations stretches down to meet it."
                       onClick={() => setTransect({ mids: { ...transect.mids, [id]: [...mids, { d: null, z: null, to: nextLive(i) }] } })}>+ seafloor point</button>}
                   </div>
@@ -131,12 +133,12 @@ export default function Transect() {
                     <div className="mids">
                       {mids.map((m, j) => (
                         <div key={j} className="mid">
-                          <span aria-hidden="true">↳</span>
-                          <input type="number" step="0.01" min="0" placeholder="km" value={m.d ?? ''} onChange={e => setMid(id, j, 'd', e.target.value)} aria-label="km from this station" />
-                          <span>km towards {nameOf(m.to)}, seafloor at</span>
-                          <input type="number" step="0.1" min="0" placeholder="m" value={m.z ?? ''} onChange={e => setMid(id, j, 'z', e.target.value)} aria-label="depth in metres" />
-                          <span>m</span>
-                          <button className="x" title="remove" onClick={() => setTransect({ mids: { ...transect.mids, [id]: mids.filter((_, k) => k !== j) } })}>×</button>
+                          <span className="to">↳ towards {nameOf(m.to)}</span>
+                          <span className="vals">
+                            <input type="number" step="0.01" min="0" placeholder="km" value={m.d ?? ''} onChange={e => setMid(id, j, 'd', e.target.value)} aria-label="km from this station" /> km,
+                            <input type="number" step="0.1" min="0" placeholder="m" value={m.z ?? ''} onChange={e => setMid(id, j, 'z', e.target.value)} aria-label="depth in metres" /> m deep
+                            <button className="x" title="remove" onClick={() => setTransect({ mids: { ...transect.mids, [id]: mids.filter((_, k) => k !== j) } })}>×</button>
+                          </span>
                         </div>
                       ))}
                     </div>
