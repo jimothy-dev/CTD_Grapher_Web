@@ -10,7 +10,7 @@ url: "https://jimothy-dev.github.io/CTD_Grapher_Web/"
 abstract: "Depth profiles and transect sections from Sea-Bird .cnv CTD casts, drawn in the browser."
 license: GPL-3.0
 version: "1.0.0"
-date-released: "2026-09-04"
+date-released: "2026-09-05"
 keywords:
   - CTD
   - oceanography
