@@ -407,7 +407,7 @@ export default function Transect() {
                   {variables.map(v => <option key={v.name} value={v.name}>{v.name}</option>)}
                   <option value="*">all sections (position palettes only)</option>
                 </select>
-                <label className="btn tiny" title={`Accepted: ${PALETTE_EXTENSIONS.join('  ')}\nSurfer .clr and .lvl, GMT .cpt, ODV .pal, Ferret .spk, NCL .rgb, SNAP .cpd, GIMP .ggr, ParaView .json/.xml, QGIS ramps, GRASS and GDAL rules.\nA file with real values also sets the color range.`}>choose palette file<input type="file" accept={PALETTE_EXTENSIONS.join(',')} onChange={onPalette} style={{ display: 'none' }} /></label>
+                <label className="btn tiny" title={`Accepted: ${PALETTE_EXTENSIONS.join('  ')}\nSurfer .clr and .lvl, GMT .cpt, ODV .pal, Ferret .spk, NCL .rgb, SNAP .cpd, GIMP .ggr, ParaView .json/.xml, QGIS ramps, GRASS and GDAL rules.\nA file with real values also sets the color range.\nChecked against real files for GMT, Ferret, NCL, ODV, ncWMS, SNAP, GIMP, ParaView, QGIS and GRASS; Surfer and ESRI files only against their documented examples so far. The note under a loaded palette says what was read.`}>choose palette file<input type="file" accept={PALETTE_EXTENSIONS.join(',')} onChange={onPalette} style={{ display: 'none' }} /></label>
               </span>
               <span className="hint">{PALETTE_EXTENSIONS.join(' ')}</span>
             </label>

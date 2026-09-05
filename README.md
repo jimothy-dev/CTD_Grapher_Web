@@ -26,6 +26,7 @@ The same graphs as a Colab notebook: [CTD_Grapher_v2](https://github.com/jimothy
 - Fixed color ranges are chosen for Puget Sound and temperate estuaries; switch to "this survey" or load a palette elsewhere.
 - Two instruments may log the same variable in different units (oxygen in mg/L and mL/L, say). The shared channel is preferred, and a remaining mismatch is flagged under the graph rather than converted.
 - Tested on the example casts and on 20 public files from SBE 9, 19, 19plus, 25, 25plus and 37 instruments. Send a `.cnv` that does not load.
+- Palette readers were checked against real files for GMT, Ferret, NCL, ODV, ncWMS, SNAP, GIMP, ParaView, QGIS and GRASS, but only against documented examples for Surfer `.clr`/`.lvl` and ESRI `.clr`. The note under a loaded palette says what was read, so a misread shows; a file that cannot be read is refused and the colours stay as they were.
 
 ## Develop
 
