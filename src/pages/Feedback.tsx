@@ -13,12 +13,14 @@ const ENDPOINT = ((import.meta.env.VITE_FEEDBACK_ENDPOINT as string | undefined)
 const KEY = ((import.meta.env.VITE_FEEDBACK_KEY as string | undefined) ?? '').trim()
 
 interface Entry { id: number; url: string; when: string; name: string; contact: string; text: string; open: boolean; comments: number }
-interface Issue { number: number; html_url: string; title: string; body: string | null; created_at: string; state: string; comments: number; pull_request?: unknown }
+interface Issue { number: number; html_url: string; title: string; body: string | null; created_at: string; state: string; comments: number; pull_request?: unknown; labels?: { name: string }[] }
+// an issue counts as feedback when the page composed it (title prefix) or when it carries the feedback label
+const isFeedback = (i: Issue) => !i.pull_request && (i.title.startsWith(PREFIX) || (i.labels ?? []).some(l => l.name === 'feedback'))
 
 function parseIssue(i: Issue): Entry {
   const body = i.body ?? ''
   const field = (label: string) => { const m = body.match(new RegExp(`^${label}:\\s*(.*)$`, 'mi')); const v = (m?.[1] ?? '').trim(); return /^\(not given\)$|^-?$/.test(v) ? '' : v }
-  const text = body.replace(/^(Name|Contact):.*$/gim, '').replace(/_Sent from the app.*$/is, '').trim() || i.title.slice(PREFIX.length)
+  const text = body.replace(/^(Name|Contact):.*$/gim, '').replace(/_Sent from the app.*$/is, '').trim() || (i.title.startsWith(PREFIX) ? i.title.slice(PREFIX.length) : i.title)
   return { id: i.number, url: i.html_url, when: i.created_at, name: field('Name'), contact: field('Contact'), text, open: i.state === 'open', comments: i.comments }
 }
 // who said it: name and contact first, contact only next, name only after that, nothing last
@@ -36,7 +38,7 @@ export default function Feedback() {
     let gone = false
     fetch(`https://api.github.com/repos/${REPO}/issues?state=all&per_page=100`, { headers: { Accept: 'application/vnd.github+json' } })
       .then(r => (r.ok ? r.json() : Promise.reject(new Error(`GitHub answered ${r.status}`))))
-      .then((issues: Issue[]) => { if (!gone) setList(issues.filter(i => !i.pull_request && i.title.startsWith(PREFIX)).map(parseIssue).sort((a, b) => rank(a) - rank(b) || b.when.localeCompare(a.when))) })
+      .then((issues: Issue[]) => { if (!gone) setList(issues.filter(isFeedback).map(parseIssue).sort((a, b) => rank(a) - rank(b) || b.when.localeCompare(a.when))) })
       .catch(e => { if (!gone) setError((e as Error).message) })
     return () => { gone = true }
   }, [])
