@@ -4,6 +4,8 @@ Depth profiles and transect sections from Sea-Bird `.cnv` CTD casts, in the brow
 
 **Use it:** https://jimothy-dev.github.io/CTD_Grapher_Web/
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22371639.svg)](https://doi.org/10.5281/zenodo.22371639)
+
 ![Transect page: stations in order with a waypoint routing the line through the passage, the station map, and a temperature section](docs/transect.png)
 
 - **Stations** — drop in any number of `.cnv` files, or OpenCTD `.csv` logs (depth, salinity and sigma-t are derived from the raw pressure, temperature and conductivity the way OpenCTD's own template does), or load the example casts. Names come from the filenames and can be edited. Switch stations in and out of the active set; both tools graph the active ones. Positions are read from the header or from latitude/longitude columns, or typed in any usual format.
@@ -42,6 +44,8 @@ React, TypeScript, Vite, Plotly.js. Deployed to GitHub Pages by the workflow in 
 
 ## Cite
 
-Simpson, J. (2026). CTD Grapher (v1.0.0). https://github.com/jimothy-dev/CTD_Grapher_Web (see `CITATION.cff`).
+Simpson, J. (2026). CTD Grapher (v1.0.0). Zenodo. https://doi.org/10.5281/zenodo.22371642
+
+The DOI https://doi.org/10.5281/zenodo.22371639 always points at the latest version. Details in `CITATION.cff`, or use the "Cite this repository" button above.
 
 Licence GPL-3.0. Example casts collected by students of TGEOS 445, Estuarine Field Studies, University of Washington Tacoma, May 2026.

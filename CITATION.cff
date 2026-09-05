@@ -17,3 +17,11 @@ keywords:
   - Sea-Bird
   - transect
   - Plotly
+doi: 10.5281/zenodo.22371639
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.22371642
+    description: "Version 1.0.0 on Zenodo"
+  - type: doi
+    value: 10.5281/zenodo.22371639
+    description: "All versions on Zenodo"
