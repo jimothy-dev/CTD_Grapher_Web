@@ -51,13 +51,12 @@ export default function Feedback() {
   // feedback label for anyone; its fields are filled from the query string
   const q = (v: string) => encodeURIComponent(v)
   const githubHref = `https://github.com/${REPO}/issues/new?template=feedback.yml&title=${q(title)}&name=${q(name.trim())}&contact=${q(contact.trim())}&message=${q(message)}`
-  // header of an entry, every part labelled: "Name: x · Contact: y", "Contact: y", "Name: x · Contact: not given", "Contact: anonymous"
+  // header of an entry: only the parts that were given, each labelled; "anonymous" when neither was
   const who = (e: Entry) => {
-    if (!e.name && !e.contact) return 'Contact: anonymous'
     const parts = []
     if (e.name) parts.push(`Name: ${e.name}`)
-    parts.push(`Contact: ${e.contact || 'not given'}`)
-    return parts.join(' · ')
+    if (e.contact) parts.push(`Contact: ${e.contact}`)
+    return parts.join(' · ') || 'anonymous'
   }
 
   // The form posts the ordinary way, not through fetch: a plain form post
