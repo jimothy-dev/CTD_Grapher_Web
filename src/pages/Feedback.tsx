@@ -94,7 +94,7 @@ export default function Feedback() {
         )}
       </form>
       <div className="card">
-        <h2>Sent publicly so far</h2>
+        <h2>Sent publicly</h2>
         {list === null && !error && <p className="muted small">Reading the list from GitHub…</p>}
         {error && <p className="muted small">The list could not be read ({error}); it is on <a href={`https://github.com/${REPO}/issues`} target="_blank" rel="noopener noreferrer">GitHub</a>.</p>}
         {list && list.length === 0 && <p className="muted small">Nothing yet.</p>}

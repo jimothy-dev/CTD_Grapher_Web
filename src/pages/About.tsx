@@ -17,6 +17,16 @@ export default function About() {
         </ul>
       </div>
       <div className="card">
+        <h2>How it is done</h2>
+        <ul>
+          <li><b>Between casts.</b> Each cast is put on a common depth grid, then at every depth a shape-preserving cubic (PCHIP, Fritsch and Carlson 1980) runs through the stations; it never overshoots the two casts on either side, and is a straight line when there are only two.</li>
+          <li><b>Station order.</b> From the most north-western station to the nearest one not yet visited, over and over; distances along the line by the haversine formula, through any waypoints.</li>
+          <li><b>Seafloor from a depth map.</b> The map is sampled about 400 times along the routed line and the samples joined; where a cast reached deeper than the map, the cast's depth is kept.</li>
+          <li><b>OpenCTD logs.</b> Depth from pressure by the UNESCO 1983 formula, salinity from conductivity by PSS-78, density (sigma-t) by EOS-80; surface pressure taken from the lowest reading when the logger saw air.</li>
+          <li><b>Units and colours.</b> When two instruments log oxygen in mL/L and mg/L, 1 mL/L = 1.42903 mg/L; other mismatches are flagged, not converted. Section colours are the cmocean scales with fixed ranges per variable.</li>
+        </ul>
+      </div>
+      <div className="card">
         <ul>
           <li><a href="https://github.com/jimothy-dev/CTD_Grapher_Web" {...ext}>Source on GitHub</a></li>
           <li><a href="https://colab.research.google.com/github/jimothy-dev/CTD_Grapher_v2/blob/main/CTD_Grapher_v2.ipynb" {...ext}>The Colab notebook</a> it grew out of</li>
