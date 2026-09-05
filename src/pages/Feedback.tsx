@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 
 // Two ways out for feedback, because the app has no server of its own.
 // With a form endpoint configured at build time (a Formspree form URL, or
-// Web3Forms with its access key; see the README), the page posts straight to
+// Web3Forms with its access key; see the README), the form posts straight to
 // it and the message arrives by email, no account needed. Without one, or as
 // the public alternative, the form composes a GitHub issue on the project
 // repository. The list below reads those issues back, so what others have
@@ -28,8 +28,7 @@ export default function Feedback() {
   const [name, setName] = useState('')
   const [contact, setContact] = useState('')
   const [text, setText] = useState('')
-  const [state, setState] = useState<'idle' | 'busy' | 'sent' | 'failed'>('idle')
-  const [sendError, setSendError] = useState('')
+  const [state, setState] = useState<'idle' | 'busy' | 'sent'>('idle')
   const [list, setList] = useState<Entry[] | null>(null)
   const [error, setError] = useState('')
 
@@ -48,17 +47,16 @@ export default function Feedback() {
   const githubHref = `https://github.com/${REPO}/issues/new?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}&labels=feedback`
   const who = (e: Entry) => [e.name, e.contact].filter(Boolean).join(' · ') || 'anonymous'
 
-  const send = async () => {
-    if (!message || state === 'busy') return
-    setState('busy'); setSendError('')
-    try {
-      const payload: Record<string, string> = { name: name.trim(), email: contact.trim(), message, subject: title, _subject: title, page: location.href }
-      if (KEY) payload.access_key = KEY
-      const r = await fetch(ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(payload) })
-      if (!r.ok) throw new Error(`the form service answered ${r.status}`)
-      setState('sent'); setText('')
-    } catch (e) { setSendError((e as Error).message || 'could not be sent'); setState('failed') }
-  }
+  // The form posts the ordinary way, not through fetch: a plain form post
+  // needs no cross-origin permission from the service, and if the service
+  // puts up a bot check the visitor sees it and gets through. The service
+  // sends the browser back here with ?sent=1.
+  useEffect(() => {
+    if (!new URLSearchParams(location.search).has('sent')) return
+    setState('sent')
+    history.replaceState(null, '', location.pathname + location.hash)
+  }, [])
+  const back = `${location.origin}${location.pathname}?sent=1#/feedback`
 
   return (
     <div className="about stack">
@@ -66,21 +64,27 @@ export default function Feedback() {
         <h1>Feedback</h1>
         <p className="muted">An issue, a suggestion, a file that would not load. Name and contact are optional{ENDPOINT ? '; no account needed' : ''}.</p>
       </div>
-      <div className="card stack" style={{ gap: 10 }}>
+      <form className="card stack" style={{ gap: 10 }} method="post" action={ENDPOINT || undefined} onSubmit={e => { if (!ENDPOINT || !message) e.preventDefault(); else setState('busy') }}>
+        {ENDPOINT && KEY && <input type="hidden" name="access_key" value={KEY} />}
+        {ENDPOINT && <input type="hidden" name="subject" value={title} />}
+        {ENDPOINT && <input type="hidden" name="_subject" value={title} />}
+        {ENDPOINT && <input type="hidden" name="redirect" value={back} />}
+        {ENDPOINT && <input type="hidden" name="_next" value={back} />}
+        {ENDPOINT && <input type="checkbox" name="botcheck" tabIndex={-1} aria-hidden="true" style={{ display: 'none' }} />}
         <div className="row">
-          <label className="field" style={{ flex: '1 1 180px' }}>name (optional)<input value={name} onChange={e => setName(e.target.value)} placeholder="who you are" /></label>
-          <label className="field" style={{ flex: '1 1 220px' }}>email or contact (optional)<input value={contact} onChange={e => setContact(e.target.value)} placeholder="so you can be answered" /></label>
+          <label className="field" style={{ flex: '1 1 180px' }}>name (optional)<input name="name" value={name} onChange={e => setName(e.target.value)} placeholder="who you are" /></label>
+          <label className="field" style={{ flex: '1 1 220px' }}>email or contact (optional)<input name="email" value={contact} onChange={e => setContact(e.target.value)} placeholder="so you can be answered" /></label>
         </div>
         <label className="field">your suggestion or issue
-          <textarea value={text} onChange={e => { setText(e.target.value); if (state !== 'busy') setState('idle') }} rows={9} placeholder="What happened, or what would help. If a file would not load, say which instrument wrote it." style={{ resize: 'vertical', padding: '8px 10px', border: '1px solid var(--rule)', borderRadius: 8, background: 'var(--ground)', color: 'var(--ink)', font: 'inherit' }} />
+          <textarea name="message" value={text} onChange={e => { setText(e.target.value); if (state !== 'busy') setState('idle') }} rows={9} placeholder="What happened, or what would help. If a file would not load, say which instrument wrote it." style={{ resize: 'vertical', padding: '8px 10px', border: '1px solid var(--rule)', borderRadius: 8, background: 'var(--ground)', color: 'var(--ink)', font: 'inherit' }} />
         </label>
         {ENDPOINT ? (
           <div className="row" style={{ justifyContent: 'space-between' }}>
             <span className="small muted">
-              {state === 'sent' ? 'Sent. Thank you.' : state === 'failed' ? `Not sent (${sendError}). You can post it on GitHub instead.` : 'Goes straight to the author by email; nothing is published.'}
+              {state === 'sent' ? 'Sent. Thank you.' : 'Goes straight to the author by email; nothing is published.'}
               {' '}<a href={message ? githubHref : `https://github.com/${REPO}/issues`} target="_blank" rel="noopener noreferrer">{message ? 'Or post it publicly on GitHub' : 'Public feedback is on GitHub'}</a>.
             </span>
-            <button className="btn primary" onClick={send} disabled={!message || state === 'busy'}>{state === 'busy' ? 'sending…' : 'send'}</button>
+            <button type="submit" className="btn primary" disabled={!message || state === 'busy'}>{state === 'busy' ? 'sending…' : 'send'}</button>
           </div>
         ) : (
           <div className="row" style={{ justifyContent: 'space-between' }}>
@@ -88,7 +92,7 @@ export default function Feedback() {
             <a className={'btn primary' + (message ? '' : ' disabled')} href={message ? githubHref : undefined} target="_blank" rel="noopener noreferrer" aria-disabled={!message} onClick={e => { if (!message) e.preventDefault() }}>send via GitHub</a>
           </div>
         )}
-      </div>
+      </form>
       <div className="card">
         <h2>Sent publicly so far</h2>
         {list === null && !error && <p className="muted small">Reading the list from GitHub…</p>}
