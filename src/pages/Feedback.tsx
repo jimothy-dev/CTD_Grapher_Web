@@ -20,7 +20,8 @@ const isFeedback = (i: Issue) => !i.pull_request && (i.title.startsWith(PREFIX) 
 function parseIssue(i: Issue): Entry {
   // the issue form writes "### Name" headings; older links wrote "Name:" lines; both are read
   const body = (i.body ?? '').replace(/^###\s*(Name|Contact|Message)\s*\r?\n+/gim, '$1: ').replace(/_No response_/g, '')
-  const field = (label: string) => { const m = body.match(new RegExp(`^${label}:\\s*(.*)$`, 'mi')); const v = (m?.[1] ?? '').trim(); return /^\(not given\)$|^-?$/.test(v) ? '' : v }
+  // a field is what follows its label on the same line only ([ \t], not \s, or an empty Name would swallow the Contact line)
+  const field = (label: string) => { const m = body.match(new RegExp(`^${label}:[ \\t]*(.*)$`, 'mi')); const v = (m?.[1] ?? '').trim(); return /^\(not given\)$|^-?$/.test(v) ? '' : v }
   const text = body.replace(/^(Name|Contact):.*$/gim, '').replace(/^Message:\s*/im, '').replace(/_Sent from the app.*$/is, '').trim() || (i.title.startsWith(PREFIX) ? i.title.slice(PREFIX.length) : i.title)
   return { id: i.number, url: i.html_url, when: i.created_at, name: field('Name'), contact: field('Contact'), text, open: i.state === 'open', comments: i.comments }
 }
