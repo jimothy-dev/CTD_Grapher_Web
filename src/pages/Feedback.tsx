@@ -18,9 +18,10 @@ interface Issue { number: number; html_url: string; title: string; body: string 
 const isFeedback = (i: Issue) => !i.pull_request && (i.title.startsWith(PREFIX) || (i.labels ?? []).some(l => l.name === 'feedback'))
 
 function parseIssue(i: Issue): Entry {
-  const body = i.body ?? ''
+  // the issue form writes "### Name" headings; older links wrote "Name:" lines; both are read
+  const body = (i.body ?? '').replace(/^###\s*(Name|Contact|Message)\s*\r?\n+/gim, '$1: ').replace(/_No response_/g, '')
   const field = (label: string) => { const m = body.match(new RegExp(`^${label}:\\s*(.*)$`, 'mi')); const v = (m?.[1] ?? '').trim(); return /^\(not given\)$|^-?$/.test(v) ? '' : v }
-  const text = body.replace(/^(Name|Contact):.*$/gim, '').replace(/_Sent from the app.*$/is, '').trim() || (i.title.startsWith(PREFIX) ? i.title.slice(PREFIX.length) : i.title)
+  const text = body.replace(/^(Name|Contact):.*$/gim, '').replace(/^Message:\s*/im, '').replace(/_Sent from the app.*$/is, '').trim() || (i.title.startsWith(PREFIX) ? i.title.slice(PREFIX.length) : i.title)
   return { id: i.number, url: i.html_url, when: i.created_at, name: field('Name'), contact: field('Contact'), text, open: i.state === 'open', comments: i.comments }
 }
 // who said it: name and contact first, contact only next, name only after that, nothing last
@@ -45,8 +46,10 @@ export default function Feedback() {
 
   const message = text.trim()
   const title = PREFIX + (message.split(/\s+/).slice(0, 8).join(' ').slice(0, 70) || 'suggestion')
-  const body = `Name: ${name.trim() || '(not given)'}\nContact: ${contact.trim() || '(not given)'}\n\n${message}\n\n_Sent from the app's Feedback page._`
-  const githubHref = `https://github.com/${REPO}/issues/new?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}&labels=feedback`
+  // the repository's issue form (.github/ISSUE_TEMPLATE/feedback.yml) applies the
+  // feedback label for anyone; its fields are filled from the query string
+  const q = (v: string) => encodeURIComponent(v)
+  const githubHref = `https://github.com/${REPO}/issues/new?template=feedback.yml&title=${q(title)}&name=${q(name.trim())}&contact=${q(contact.trim())}&message=${q(message)}`
   const who = (e: Entry) => [e.name, e.contact].filter(Boolean).join(' · ') || 'anonymous'
 
   // The form posts the ordinary way, not through fetch: a plain form post

@@ -1,0 +1,26 @@
+name: Feedback
+description: A suggestion, an issue, or a file that would not load
+title: "Feedback: "
+labels: ["feedback"]
+body:
+  - type: input
+    id: name
+    attributes:
+      label: Name
+      description: Optional
+    validations:
+      required: false
+  - type: input
+    id: contact
+    attributes:
+      label: Contact
+      description: Optional, an email or another way to reach you
+    validations:
+      required: false
+  - type: textarea
+    id: message
+    attributes:
+      label: Message
+      description: What happened, or what would help. If a file would not load, say which instrument wrote it.
+    validations:
+      required: true
