@@ -1,26 +1,62 @@
-import { useCallback, useMemo, useRef, useState, type ChangeEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import { Link } from 'react-router-dom'
 import Plotly from 'plotly.js-dist-min'
 import type { PlotData, Layout, PlotlyHTMLElement } from 'plotly.js'
-import { useStore, BEFORE, AFTER, type Mid, type Waypoint } from '../store'
+import { useStore, BEFORE, type Mid, type Waypoint, type SeafloorSource } from '../store'
 import { availableVariables } from '../lib/cnv'
-import { buildSection, routeDistances, type SectionStation } from '../lib/section'
+import { buildSection, routeDistances, type SectionStation, type RoutePoint } from '../lib/section'
+import { fetchSeafloor, forgetSeafloor, routeKey, SOURCES, type SeafloorResult } from '../lib/bathymetry'
 import { parsePalette, PALETTE_EXTENSIONS } from '../lib/palettes'
-import { fractionAlong } from '../lib/geo'
+import { fractionAlong, haversineKm } from '../lib/geo'
 import Plot from '../components/Plot'
 import PlotCard from '../components/PlotCard'
 
 const num = (s: string): number | null => { const v = parseFloat(s); return Number.isFinite(v) ? v : null }
 type LatLon = { lat: number; lon: number }
+interface LiveStation extends LatLon { id: string }
+type Ordered = { route: Waypoint[]; lead: Waypoint[] }[]
+
+// Waypoints in the order they lie along their stretch of the line: between
+// two stations by their place along the straight join, ahead of the first
+// station farthest first, beyond the last nearest first.
+function orderWaypoints(kind: 'before' | 'between' | 'beyond', a: LatLon, b: LatLon | null, list: Waypoint[]): Waypoint[] {
+  if (kind === 'between' && b) return [...list].sort((p, q) => fractionAlong(a, b, p) - fractionAlong(a, b, q))
+  const d = (w: Waypoint) => haversineKm(a.lat, a.lon, w.lat, w.lon)
+  return [...list].sort((p, q) => (kind === 'before' ? d(q) - d(p) : d(p) - d(q)))
+}
+const asPoint = (w: Waypoint): RoutePoint => ({ lat: w.lat, lon: w.lon, depth: w.depth })
+
+// Each station's waypoints in travel order: towards the next station, or out
+// beyond the end for the last one; the first station also gets those ahead of it.
+function orderedWaypoints(live: LiveStation[], waypoints: Waypoint[]): Ordered {
+  return live.map((s, i) => {
+    const nxt = live[i + 1] ?? null
+    const route = orderWaypoints(nxt ? 'between' : 'beyond', s, nxt, waypoints.filter(w => w.after === s.id))
+    const lead = i === 0 ? orderWaypoints('before', s, null, waypoints.filter(w => w.after === BEFORE)) : []
+    return { route, lead }
+  })
+}
+// The line the map draws: waypoints ahead of the first station, then each station and the waypoints after it.
+function routeLine(live: LiveStation[], ordered: Ordered): LatLon[] {
+  const out: LatLon[] = [...(ordered[0]?.lead ?? [])]
+  live.forEach((s, i) => { out.push({ lat: s.lat, lon: s.lon }); out.push(...ordered[i].route) })
+  return out
+}
+// A quarter of the way on past `from`, continuing the direction from `towards` to `from`.
+function carryOn(from: LatLon, towards: LatLon | null): LatLon {
+  if (!towards || (towards.lat === from.lat && towards.lon === from.lon)) return { lat: +(from.lat + 0.01).toFixed(5), lon: from.lon }
+  return { lat: +(from.lat + 0.25 * (from.lat - towards.lat)).toFixed(5), lon: +(from.lon + 0.25 * (from.lon - towards.lon)).toFixed(5) }
+}
 
 // Map traces: 0 the routed line, 1 the waypoints, then one per station. The
 // first two keep their slots even when empty, so a drag can restyle them.
-function mapFigure(stations: { name: string; color: string; lat: number; lon: number }[], line: LatLon[], waypoints: Waypoint[]): { data: Partial<PlotData>[]; layout: Partial<Layout> } {
+type MapView = { center: { lat: number; lon: number }; zoom: number }
+function mapFigure(stations: { name: string; color: string; lat: number; lon: number }[], line: LatLon[], waypoints: Waypoint[], view: MapView | null): { data: Partial<PlotData>[]; layout: Partial<Layout> } {
   const lats = stations.map(s => s.lat), lons = stations.map(s => s.lon)
   const midLat = lats.reduce((a, b) => a + b, 0) / lats.length
   const midLon = lons.reduce((a, b) => a + b, 0) / lons.length
   const span = Math.max(Math.max(...lats) - Math.min(...lats), (Math.max(...lons) - Math.min(...lons)) * Math.cos(midLat * Math.PI / 180))
-  const zoom = [[0.02, 12], [0.05, 11], [0.2, 10], [0.5, 9], [1, 8], [5, 6], [20, 4], [60, 3], [1e9, 1]].find(([lim]) => span < lim)![1]
+  const autoZoom = [[0.02, 12], [0.05, 11], [0.2, 10], [0.5, 9], [1, 8], [5, 6], [20, 4], [60, 3], [1e9, 1]].find(([lim]) => span < lim)![1]
   const data: Partial<PlotData>[] = [
     { type: 'scattermap', mode: 'lines', lat: line.map(p => p.lat), lon: line.map(p => p.lon), line: { width: 2, color: '#555' }, hoverinfo: 'skip', showlegend: false, name: 'transect' } as unknown as Partial<PlotData>,
     { type: 'scattermap', mode: 'markers', lat: waypoints.map(w => w.lat), lon: waypoints.map(w => w.lon), name: 'waypoints', showlegend: waypoints.length > 0,
@@ -31,18 +67,23 @@ function mapFigure(stations: { name: string; color: string; lat: number; lon: nu
     marker: { size: 13, color: s.color },
     hovertemplate: `<b>${s.name}</b><br>%{lat:.4f}, %{lon:.4f}<extra></extra>`,
   } as unknown as Partial<PlotData>)
+  // the user's own pan and zoom, when there is one for this set of stations,
+  // so a redraw for a moved waypoint or a typed label does not jump the view
   const layout = {
-    margin: { l: 0, r: 0, t: 0, b: 0 }, legend: { title: { text: 'Station' } },
-    map: { style: 'open-street-map', center: { lat: midLat, lon: midLon }, zoom },
+    margin: { l: 0, r: 0, t: 0, b: 0 }, legend: { title: { text: 'Station' } }, uirevision: 'map',
+    map: { style: 'open-street-map', center: view?.center ?? { lat: midLat, lon: midLon }, zoom: view?.zoom ?? autoZoom },
   } as unknown as Partial<Layout>
   return { data, layout }
 }
 
+interface MapEvent { point: { x: number; y: number }; lngLat: { lng: number; lat: number }; originalEvent?: unknown; preventDefault: () => void }
 interface MapLike {
   project: (lnglat: [number, number]) => { x: number; y: number }
   dragPan: { enable: () => void; disable: () => void }
   getCanvas: () => HTMLCanvasElement
-  on: (ev: string, fn: (e: { point: { x: number; y: number }; lngLat: { lng: number; lat: number }; preventDefault: () => void }) => void) => void
+  getCenter: () => { lng: number; lat: number }
+  getZoom: () => number
+  on: (ev: string, fn: (e: MapEvent) => void) => void
   __ctdHooked?: boolean
 }
 
@@ -61,30 +102,51 @@ export default function Transect() {
   const orderIds = transect.order.filter(id => byId[id])
   const live = (id: string) => (transect.on[id] ?? true) && byId[id].lat !== null && byId[id].lon !== null
   const liveIds = orderIds.filter(live)
-  const nextLive = (i: number) => orderIds.slice(i + 1).find(live) ?? null
-  const nextLiveOf = (id: string) => nextLive(orderIds.indexOf(id))
-  // waypoints after a station, in the order they lie along the way to the next one
-  const routeFor = (id: string): Waypoint[] => {
-    const nxt = nextLiveOf(id)
-    const list = transect.waypoints.filter(w => w.after === id)
-    if (!nxt) return list
-    const a = { lat: byId[id].lat!, lon: byId[id].lon! }, b = { lat: byId[nxt].lat!, lon: byId[nxt].lon! }
-    return [...list].sort((p, q) => fractionAlong(a, b, p) - fractionAlong(a, b, q))
-  }
-  const chosen: SectionStation[] = liveIds.map(id => {
+  const liveStations: LiveStation[] = liveIds.map(id => ({ id, lat: byId[id].lat!, lon: byId[id].lon! }))
+  // waypoints of an unticked or unpositioned station wait in its row, off the map, until it is back
+  const onLine = (w: Waypoint, lv: LiveStation[]) => (w.after === BEFORE ? lv.length > 0 : lv.some(s => s.id === w.after))
+  const shownWps = transect.waypoints.filter(w => onLine(w, liveStations))
+  const ordered = orderedWaypoints(liveStations, transect.waypoints)
+  const nextLiveOf = (id: string) => { const i = liveIds.indexOf(id); return i >= 0 ? liveIds[i + 1] ?? null : null }
+  const chosen: SectionStation[] = liveIds.map((id, i) => {
     const s = byId[id]
     return {
       id, label: transect.labels[id]?.trim() || s.name, color: s.color, lat: s.lat!, lon: s.lon!, cast: s.cast,
       mids: (transect.mids[id] ?? []).filter(m => m.d !== null && m.z !== null).map(m => ({ d: m.d!, z: m.z!, to: m.to })),
-      route: nextLiveOf(id) ? routeFor(id).map(w => ({ lat: w.lat, lon: w.lon, depth: w.depth })) : [],
+      route: ordered[i].route.map(asPoint), lead: ordered[i].lead.map(asPoint),
     }
   })
   const nameOf = (id: string | null) => (id && byId[id] ? (transect.labels[id]?.trim() || byId[id].name) : 'the next station')
   const unplaced = orderIds.filter(id => (transect.on[id] ?? true) && !live(id)).map(id => byId[id].name)
+  const route = chosen.length > 1 ? routeDistances(chosen) : null
 
   let dmin = num(settings.depthMin), dmax = num(settings.depthMax)
   if (dmin !== null && dmax !== null && dmin > dmax) [dmin, dmax] = [dmax, dmin]
   const isOn = (name: string) => settings.sectionVariables[name] ?? false
+
+  // ---- surveyed seafloor along the routed line, fetched when the route or the source changes
+  const source = settings.seafloorSource
+  const path = route?.path ?? null
+  const key = source !== 'casts' && path && path.length > 1 ? routeKey(path, source) : null
+  const [floor, setFloor] = useState<{ key: string; result?: SeafloorResult; error?: string }>({ key: '' })
+  const [retry, setRetry] = useState(0)
+  const pathRef = useRef(path)
+  pathRef.current = path
+  // The request is shared through the module's cache, so leaving the page
+  // does not cancel it: the answer is kept for when the route comes back.
+  useEffect(() => {
+    const p = pathRef.current
+    if (!key || source === 'casts' || !p) return
+    let gone = false
+    setFloor(f => (f.key === key && f.error ? { key: '' } : f))      // a retry shows "reading" again, not the old error
+    fetchSeafloor(p, source).then(
+      result => { if (!gone) setFloor({ key, result }) },
+      err => { if (!gone) setFloor({ key, error: (err as Error).message || 'could not be read' }) })
+    return () => { gone = true }
+  }, [key, source, retry])
+  const floorReady = key !== null && floor.key === key ? floor : null
+  const samples = floorReady?.result?.samples ?? null
+  const retryNow = () => { if (path && source !== 'casts') forgetSeafloor(path, source); setRetry(n => n + 1) }
 
   const sections = useMemo(() => variables.filter(v => isOn(v.name)).map(v => {
     const pal = settings.palettes[v.name] ?? settings.palettes['*']
@@ -95,55 +157,63 @@ export default function Transect() {
         variable: v.name, shorts: v.shorts, depthMin: dmin, depthMax: dmax, nContours: settings.contourSteps,
         colorscale: pal && pal.clr.stops.length ? pal.clr.stops : null,
         range: levels ? [levels[0], levels[levels.length - 1]] : settings.rangeMode === 'auto' ? 'auto' : null,
-        colorbarName: settings.colorbarName,
+        colorbarName: settings.colorbarName, interpolation: settings.interpolation,
+        seafloor: samples, seafloorName: source !== 'casts' ? SOURCES[source].name : undefined,
       }),
     }
   }),
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  [transect, stations, variables, settings, dmin, dmax])
+  [transect, stations, variables, settings, dmin, dmax, samples])
 
   const placed = active.filter(s => s.lat !== null && s.lon !== null)
-  const routeLine = (chosenLike: SectionStation[]): LatLon[] => chosenLike.flatMap((s, i) => (i < chosenLike.length - 1 ? [{ lat: s.lat, lon: s.lon }, ...(s.route ?? [])] : [{ lat: s.lat, lon: s.lon }]))
-  const map = useMemo(() => placed.length ? mapFigure(placed.map(s => ({ name: s.name, color: s.color, lat: s.lat!, lon: s.lon! })), routeLine(chosen), transect.waypoints) : null,
+  // the view the user last panned or zoomed to, kept while the same stations are on the map
+  const viewRef = useRef<(MapView & { key: string }) | null>(null)
+  const placedKey = placed.map(s => `${s.id}:${s.lat}:${s.lon}`).join('|')
+  const placedKeyRef = useRef(placedKey)
+  placedKeyRef.current = placedKey
+  const map = useMemo(() => {
+    if (!placed.length) return null
+    const kept = viewRef.current && viewRef.current.key === placedKey ? viewRef.current : null
+    return mapFigure(placed.map(s => ({ name: s.name, color: s.color, lat: s.lat!, lon: s.lon! })), routeLine(liveStations, ordered), shownWps, kept)
+  },
   // eslint-disable-next-line react-hooks/exhaustive-deps
   [stations, transect])
-  const distances = chosen.length > 1 ? routeDistances(chosen).dist : []
 
   // ---- dragging waypoints on the map ----
   // Plotly's map cannot drag points, but it hands out the map underneath,
   // whose mouse events carry the position. Only waypoints move; a station's
   // position comes from its file or the Stations page.
-  const liveRef = useRef({ waypoints: transect.waypoints, chosen })
-  liveRef.current = { waypoints: transect.waypoints, chosen }
+  const liveRef = useRef({ waypoints: transect.waypoints, live: liveStations })
+  liveRef.current = { waypoints: transect.waypoints, live: liveStations }
   const commitRef = useRef((w: Waypoint[]) => setTransect({ waypoints: w }))
   commitRef.current = (w: Waypoint[]) => setTransect({ waypoints: w })
   const onMapReady = useCallback((gd: PlotlyHTMLElement) => {
     const m = (gd as unknown as { _fullLayout?: { map?: { _subplot?: { map?: MapLike } } } })._fullLayout?.map?._subplot?.map
     if (!m || typeof m.project !== 'function' || m.__ctdHooked) return
     m.__ctdHooked = true
+    // remember where the user leaves the map (mouse, touch or wheel), not moves we make ourselves
+    let wheeled = false
+    m.on('wheel', () => { wheeled = true })
+    m.on('moveend', e => {
+      if (e.originalEvent || wheeled) { const c = m.getCenter(); viewRef.current = { key: placedKeyRef.current, center: { lat: c.lat, lon: c.lng }, zoom: m.getZoom() } }
+      wheeled = false
+    })
     let held: { index: number; wps: Waypoint[] } | null = null
     let raf = 0
     const nearest = (pt: { x: number; y: number }) => {
-      const wps = liveRef.current.waypoints
+      const { waypoints: wps, live: lv } = liveRef.current
       let best = -1, bd = 14
-      wps.forEach((w, i) => { const p = m.project([w.lon, w.lat]); const d = Math.hypot(p.x - pt.x, p.y - pt.y); if (d < bd) { bd = d; best = i } })
+      wps.forEach((w, i) => { if (!onLine(w, lv)) return; const p = m.project([w.lon, w.lat]); const d = Math.hypot(p.x - pt.x, p.y - pt.y); if (d < bd) { bd = d; best = i } })
       return best
     }
     const redraw = (wps: Waypoint[]) => {
       cancelAnimationFrame(raf)
       raf = requestAnimationFrame(() => {
-        const ch = liveRef.current.chosen.map(s => ({ ...s, route: s.route ? routeOf(s.id, wps) : [] }))
-        const line = routeLine(ch)
-        void Plotly.restyle(gd, { lat: [line.map(p => p.lat), wps.map(w => w.lat)], lon: [line.map(p => p.lon), wps.map(w => w.lon)] } as never, [0, 1]).catch(() => {})
+        const lv = liveRef.current.live
+        const line = routeLine(lv, orderedWaypoints(lv, wps))
+        const shown = wps.filter(w => onLine(w, lv))
+        void Plotly.restyle(gd, { lat: [line.map(p => p.lat), shown.map(w => w.lat)], lon: [line.map(p => p.lon), shown.map(w => w.lon)] } as never, [0, 1]).catch(() => {})
       })
-    }
-    const routeOf = (id: string, wps: Waypoint[]) => {
-      const ch = liveRef.current.chosen
-      const i = ch.findIndex(s => s.id === id)
-      const nxt = ch[i + 1]
-      const list = wps.filter(w => w.after === id)
-      if (!nxt) return []
-      return [...list].sort((p, q) => fractionAlong(ch[i], nxt, p) - fractionAlong(ch[i], nxt, q)).map(w => ({ lat: w.lat, lon: w.lon, depth: w.depth }))
     }
     const start = (e: { point: { x: number; y: number }; preventDefault: () => void }) => {
       const i = nearest(e.point)
@@ -185,13 +255,27 @@ export default function Transect() {
     setTransect({ mids: { ...transect.mids, [id]: mids } })
   }
   const addMid = (id: string, to: string | null) => setTransect({ mids: { ...transect.mids, [id]: [...(transect.mids[id] ?? []), { d: null, z: null, to }] } })
-  const whither = (m: Mid) => m.to === BEFORE ? 'before the line' : m.to === AFTER ? 'beyond the line' : `towards ${nameOf(m.to)}`
-  // a new waypoint starts halfway to the next station, so it is visible at once
+  const newWaypoint = (after: string, at: LatLon): Waypoint => ({ id: `w${Date.now().toString(36)}${Math.floor(Math.random() * 1e4)}`, after, lat: at.lat, lon: at.lon, depth: null })
+  const pushWaypoint = (w: Waypoint) => setTransect({ waypoints: [...transect.waypoints, w] })
+  // a new waypoint between stations starts halfway to the next one, so it is visible at once
   const addWaypoint = (id: string) => {
     const nxt = nextLiveOf(id); if (!nxt) return
     const a = byId[id], b = byId[nxt]
-    const w: Waypoint = { id: `w${Date.now().toString(36)}${Math.floor(Math.random() * 1e4)}`, after: id, lat: +((a.lat! + b.lat!) / 2).toFixed(5), lon: +((a.lon! + b.lon!) / 2).toFixed(5), depth: null }
-    setTransect({ waypoints: [...transect.waypoints, w] })
+    pushWaypoint(newWaypoint(id, { lat: +((a.lat! + b.lat!) / 2).toFixed(5), lon: +((a.lon! + b.lon!) / 2).toFixed(5) }))
+  }
+  // ahead of the first station, or beyond the last: carry the line on a quarter of the way, past any waypoint already out there
+  const addBefore = () => {
+    if (liveStations.length < 2) return
+    const first = liveStations[0], lead = ordered[0].lead
+    const at = lead.length ? carryOn(lead[0], first) : carryOn(first, ordered[0].route[0] ?? liveStations[1])
+    pushWaypoint(newWaypoint(BEFORE, at))
+  }
+  const addAfter = () => {
+    const n = liveStations.length; if (n < 2) return
+    const lastS = liveStations[n - 1], beyond = ordered[n - 1].route
+    const before = ordered[n - 2].route
+    const at = beyond.length ? carryOn(beyond[beyond.length - 1], lastS) : carryOn(lastS, before[before.length - 1] ?? liveStations[n - 2])
+    pushWaypoint(newWaypoint(lastS.id, at))
   }
   const setWaypoint = (wid: string, patch: Partial<Waypoint>) => setTransect({ waypoints: transect.waypoints.map(w => (w.id === wid ? { ...w, ...patch } : w)) })
   const dropWaypoint = (wid: string) => setTransect({ waypoints: transect.waypoints.filter(w => w.id !== wid) })
@@ -201,6 +285,24 @@ export default function Transect() {
   const seg = <T extends string>(value: T, options: [T, string][], set: (v: T) => void) => (
     <span className="seg">{options.map(([v, label]) => <button key={v} className={value === v ? 'on' : ''} onClick={() => set(v)}>{label}</button>)}</span>
   )
+  const wpRow = (w: Waypoint, text: string) => (
+    <div key={w.id} className="mid wp">
+      <span className="to">◇ {text}, drag it on the map</span>
+      <span className="vals">
+        <input type="number" step="0.0001" value={w.lat} onChange={e => { const v = num(e.target.value); if (v !== null) setWaypoint(w.id, { lat: v }) }} aria-label="waypoint latitude" title="latitude" style={{ width: 80 }} />
+        <input type="number" step="0.0001" value={w.lon} onChange={e => { const v = num(e.target.value); if (v !== null) setWaypoint(w.id, { lon: v }) }} aria-label="waypoint longitude" title="longitude" style={{ width: 86 }} />
+        <input type="number" step="0.1" min="0" placeholder="seafloor m" value={w.depth ?? ''} onChange={e => setWaypoint(w.id, { depth: num(e.target.value) })} aria-label="seafloor depth at the waypoint, metres" title="Seafloor depth here in metres, if known: a seafloor point at this place on the line" style={{ width: 82 }} />
+        <button className="x" title="remove" onClick={() => dropWaypoint(w.id)}>×</button>
+      </span>
+    </div>
+  )
+  const floorStatus = source === 'casts' ? null
+    : !key ? <span className="hint">needs two positioned stations on the line</span>
+    : !floorReady ? <span className="hint">{SOURCES[source].name}: reading the seafloor along the line…</span>
+    : floorReady.error ? <span className="hint" style={{ color: 'var(--danger)', fontFamily: 'var(--sans)' }}>{SOURCES[source].name}: {floorReady.error} <button className="btn quiet tiny" onClick={retryNow}>retry</button></span>
+    : <span className="hint">{SOURCES[source].name}: {floorReady.result!.detail}</span>
+  const lastDist = route ? route.dist[route.dist.length - 1] : 0
+  const extended = route ? route.xMin < -1e-6 || route.xMax > lastDist + 1e-6 : false
 
   return (
     <div className="grid-2">
@@ -217,8 +319,12 @@ export default function Transect() {
               const placedHere = s.lat !== null && s.lon !== null
               const mids = transect.mids[id] ?? []
               const isLive = live(id)
-              const first = liveIds[0] === id, lastLive = liveIds[liveIds.length - 1] === id
-              const wps = isLive && nextLive(i) !== null ? routeFor(id) : []
+              const li = liveIds.indexOf(id)
+              const nxt = isLive ? nextLiveOf(id) : null
+              const isFirst = isLive && li === 0, isLast = isLive && li === liveIds.length - 1
+              const lead = isFirst ? ordered[0].lead : [], after = isLive ? ordered[li].route : []
+              const parked = isLive ? [] : transect.waypoints.filter(w => w.after === id)
+              const label = transect.labels[id]?.trim() || s.name
               return (
                 <div key={id} draggable className={'item' + (transect.on[id] ? '' : ' off') + (dragging === i ? ' dragging' : '') + (overIdx === i ? ' over' : '')}
                   onDragStart={e => { dragFrom.current = i; setDragging(i); e.dataTransfer.effectAllowed = 'move' }}
@@ -242,17 +348,19 @@ export default function Transect() {
                         onChange={e => setTransect({ labels: { ...transect.labels, [id]: e.target.value } })} aria-label={`Label for ${s.name} on the section`} />
                     </label>
                     <span className="adds">
-                      {isLive && first && liveIds.length > 1 && <button className="add" title="A seafloor depth in metres out past this station, extending the section that way" onClick={() => addMid(id, BEFORE)}>+ point before</button>}
-                      {isLive && nextLive(i) !== null && <button className="add" title="A seafloor depth in metres known between this station and the next, read off a chart. Shapes the seafloor; the colour between stations stretches down to meet it." onClick={() => addMid(id, nextLive(i))}>+ point after</button>}
-                      {isLive && nextLive(i) !== null && <button className="add" title="Routes the line through a place you drag to on the map, so the distance runs through the water instead of straight across land. Give it a depth and it is a seafloor point as well." onClick={() => addWaypoint(id)}>+ waypoint</button>}
-                      {isLive && lastLive && liveIds.length > 1 && <button className="add" title="A seafloor depth in metres out past this station, extending the section that way" onClick={() => addMid(id, AFTER)}>+ point after</button>}
+                      {isFirst && liveIds.length > 1 && <button className="add" title="A point ahead of this station that carries the line on before it, dragged on the map; the section starts there. Give it a depth and it is a seafloor point as well." onClick={addBefore}>+ waypoint before</button>}
+                      {nxt && <button className="add" title="A seafloor depth in metres known between this station and the next, read off a chart. Shapes the seafloor; the color between stations stretches down to meet it." onClick={() => addMid(id, nxt)}>+ point after</button>}
+                      {nxt && <button className="add" title="Routes the line through a place you drag to on the map, so the distance runs through the water instead of straight across land. Give it a depth and it is a seafloor point as well." onClick={() => addWaypoint(id)}>+ waypoint</button>}
+                      {isLast && liveIds.length > 1 && <button className="add" title="A point beyond this station that carries the line on past it, dragged on the map; the section ends there. Give it a depth and it is a seafloor point as well." onClick={addAfter}>+ waypoint after</button>}
                     </span>
                   </div>
-                  {(mids.length > 0 || wps.length > 0) && (
+                  {(mids.length > 0 || lead.length > 0 || after.length > 0 || parked.length > 0) && (
                     <div className="mids">
+                      {parked.map((w, j) => wpRow(w, `waypoint ${j + 1} after ${label}, off the map while the station is off the line`))}
+                      {lead.map((w, j) => wpRow(w, `waypoint ${j + 1} before ${label}`))}
                       {mids.map((m, j) => (
                         <div key={j} className="mid">
-                          <span className="to">↳ {whither(m)}</span>
+                          <span className="to">↳ towards {nameOf(m.to)}</span>
                           <span className="vals">
                             <input type="number" step="0.01" min="0" placeholder="km" value={m.d ?? ''} onChange={e => setMid(id, j, 'd', e.target.value)} aria-label="km from this station" /> km,
                             <input type="number" step="0.1" min="0" placeholder="m" value={m.z ?? ''} onChange={e => setMid(id, j, 'z', e.target.value)} aria-label="depth in metres" /> m deep
@@ -260,17 +368,7 @@ export default function Transect() {
                           </span>
                         </div>
                       ))}
-                      {wps.map((w, j) => (
-                        <div key={w.id} className="mid wp">
-                          <span className="to">◇ waypoint {j + 1} on the way to {nameOf(nextLive(i))}, drag it on the map</span>
-                          <span className="vals">
-                            <input type="number" step="0.0001" value={w.lat} onChange={e => { const v = num(e.target.value); if (v !== null) setWaypoint(w.id, { lat: v }) }} aria-label="waypoint latitude" style={{ width: 84 }} />
-                            <input type="number" step="0.0001" value={w.lon} onChange={e => { const v = num(e.target.value); if (v !== null) setWaypoint(w.id, { lon: v }) }} aria-label="waypoint longitude" style={{ width: 90 }} />
-                            seafloor <input type="number" step="0.1" min="0" placeholder="m" value={w.depth ?? ''} onChange={e => setWaypoint(w.id, { depth: num(e.target.value) })} aria-label="seafloor depth at the waypoint, metres" /> m
-                            <button className="x" title="remove" onClick={() => dropWaypoint(w.id)}>×</button>
-                          </span>
-                        </div>
-                      ))}
+                      {after.map((w, j) => wpRow(w, nxt ? `waypoint ${j + 1} on the way to ${nameOf(nxt)}` : `waypoint ${j + 1} beyond ${label}`))}
                     </div>
                   )}
                 </div>
@@ -278,7 +376,7 @@ export default function Transect() {
             })}
           </div>
           {unplaced.length > 0 && <p className="small muted" style={{ marginTop: 8 }}>Left off until positioned: {unplaced.join(', ')}.</p>}
-          {distances.length > 1 && <p className="small muted mono" style={{ marginTop: 8 }}>{distances[distances.length - 1].toFixed(2)} km end to end{transect.waypoints.length ? ', along the waypoints' : ''}</p>}
+          {route && <p className="small muted mono" style={{ marginTop: 8 }}>{(route.xMax - route.xMin).toFixed(2)} km end to end{extended ? ` (${lastDist.toFixed(2)} km between the stations)` : ''}{route.path.length > chosen.length ? ', along the waypoints' : ''}</p>}
         </div>
 
         <div className="card">
@@ -292,30 +390,35 @@ export default function Transect() {
             ))}
           </div>
           <div className="row">
-            <label className="field">from, m<input type="number" value={settings.depthMin} placeholder="surface" style={{ width: 88 }} onChange={e => setSettings({ depthMin: e.target.value })} /></label>
-            <label className="field">to, m<input type="number" value={settings.depthMax} placeholder="bottom" style={{ width: 88 }} onChange={e => setSettings({ depthMax: e.target.value })} /></label>
+            <label className="field">depth from (m)<input type="number" value={settings.depthMin} placeholder="surface" style={{ width: 88 }} onChange={e => setSettings({ depthMin: e.target.value })} /></label>
+            <label className="field">depth to (m)<input type="number" value={settings.depthMax} placeholder="bottom" style={{ width: 88 }} onChange={e => setSettings({ depthMax: e.target.value })} /></label>
             <label className="field" style={{ flex: 1, minWidth: 140 }}>contour steps: {settings.contourSteps || 'smooth'}
               <input type="range" min={0} max={50} value={settings.contourSteps} onChange={e => setSettings({ contourSteps: +e.target.value })} />
             </label>
           </div>
           <div className="row" style={{ marginTop: 10 }}>
-            <label className="field">colour range{seg(settings.rangeMode, [['fixed', 'fixed'], ['auto', 'this survey']], v => setSettings({ rangeMode: v }))}</label>
-            <label className="field">colour bar label{seg(settings.colorbarName ? 'name' : 'units', [['units', 'units'], ['name', 'name and units']], v => setSettings({ colorbarName: v === 'name' }))}</label>
+            <div className="field">color range{seg(settings.rangeMode, [['fixed', 'fixed'], ['auto', 'this survey']], v => setSettings({ rangeMode: v }))}</div>
+            <div className="field">color bar label{seg(settings.colorbarName ? 'name' : 'units', [['units', 'units'], ['name', 'name and units']], v => setSettings({ colorbarName: v === 'name' }))}</div>
+            <div className="field" title="How the field is filled in between casts at each depth. Smooth draws a shape-preserving curve through the stations, the look of Surfer's and ODV's gridders, and never overshoots the neighbouring casts; straight joins them with straight lines, which shows kinks at the stations.">between stations{seg(settings.interpolation, [['smooth', 'smooth'], ['linear', 'straight']], v => setSettings({ interpolation: v }))}</div>
           </div>
           <div className="row" style={{ marginTop: 10 }}>
-            <label className="field">your own colour palette, for
+            <div className="field" title="Where the black seafloor comes from: the casts' deepest readings and the points you add, or surveyed bathymetry sampled along the routed line. NOAA NCEI's DEM mosaic is worldwide (coastal DEMs down to 1/9 arc-second, ETOPO 2022 at 15 arc-second elsewhere); EMODnet covers European seas at 1/16 arc-minute. A cast that went deeper than the grid keeps its own depth, and land on the line is reported.">seafloor{seg<SeafloorSource>(source, [['casts', 'casts and my points'], ['ncei', 'NOAA NCEI DEMs'], ['emodnet', 'EMODnet (Europe)']], v => setSettings({ seafloorSource: v }))}</div>
+            {floorStatus}
+          </div>
+          <div className="row" style={{ marginTop: 10 }}>
+            <label className="field">your own color palette, for
               <span className="row">
-                <select value={paletteTarget} onChange={e => setPaletteFor(e.target.value)} aria-label="Which section the palette colours">
+                <select value={paletteTarget} onChange={e => setPaletteFor(e.target.value)} aria-label="Which section the palette colors">
                   {variables.map(v => <option key={v.name} value={v.name}>{v.name}</option>)}
                   <option value="*">all sections (position palettes only)</option>
                 </select>
-                <label className="btn tiny" title={`Accepted: ${PALETTE_EXTENSIONS.join('  ')}\nSurfer .clr and .lvl, GMT .cpt, ODV .pal, Ferret .spk, NCL .rgb, SNAP .cpd, GIMP .ggr, ParaView .json/.xml, QGIS ramps, GRASS and GDAL rules.\nA file with real values also sets the colour range.`}>choose palette file<input type="file" accept={PALETTE_EXTENSIONS.join(',')} onChange={onPalette} style={{ display: 'none' }} /></label>
+                <label className="btn tiny" title={`Accepted: ${PALETTE_EXTENSIONS.join('  ')}\nSurfer .clr and .lvl, GMT .cpt, ODV .pal, Ferret .spk, NCL .rgb, SNAP .cpd, GIMP .ggr, ParaView .json/.xml, QGIS ramps, GRASS and GDAL rules.\nA file with real values also sets the color range.`}>choose palette file<input type="file" accept={PALETTE_EXTENSIONS.join(',')} onChange={onPalette} style={{ display: 'none' }} /></label>
               </span>
               <span className="hint">{PALETTE_EXTENSIONS.join(' ')}</span>
             </label>
             <label className="field">map<input type="checkbox" className="switch" checked={settings.showMap} onChange={e => setSettings({ showMap: e.target.checked })} /></label>
             <label className="field">titles<input type="checkbox" className="switch" checked={settings.sectionTitles} onChange={e => setSettings({ sectionTitles: e.target.checked })} /></label>
-            <label className="field">graphs{seg(settings.sectionGraphTheme, [['light', 'light'], ['dark', 'dark']], v => setSettings({ sectionGraphTheme: v }))}</label>
+            <div className="field">graphs{seg(settings.sectionGraphTheme, [['light', 'light'], ['dark', 'dark']], v => setSettings({ sectionGraphTheme: v }))}</div>
           </div>
           {Object.keys(settings.palettes).length > 0 && (
             <div className="stack" style={{ gap: 4, marginTop: 8 }}>
@@ -341,9 +444,10 @@ export default function Transect() {
           <PlotCard key={variable} data={result.data} layout={result.layout} filename={`${variable.replace(/\W+/g, '_')}_section`} height={520}
             theme={settings.sectionGraphTheme} autoTitle={result.autoTitle} title={settings.sectionTitleText[variable]} showTitle={settings.sectionTitles}
             onTitle={t => setSettings({ sectionTitleText: { ...settings.sectionTitleText, [variable]: t } })}
-            note={result.notes.length ? result.notes.join(' · ') : undefined} />
+            note={[...result.warnings, ...result.notes].length ? [...result.warnings, ...result.notes].join(' · ') : undefined} />
         ) : <div key={variable} className="note muted small">{variable}: not in every chosen station.</div>)}
-        <p className="muted small">A vertical section (transect plot): distance along a line of stations against depth, coloured by one variable and interpolated between the casts.</p>
+        <p className="muted small">A vertical section (transect plot): distance along a line of stations against depth, colored by one variable and interpolated between the casts.</p>
+        {source !== 'casts' && floorReady?.result && <p className="muted small">Seafloor: <a href={SOURCES[source].url} target="_blank" rel="noopener noreferrer">{SOURCES[source].credit}</a>.</p>}
       </div>
     </div>
   )

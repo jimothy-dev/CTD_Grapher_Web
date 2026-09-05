@@ -11,8 +11,9 @@ export default function About() {
         <ul>
           <li>Reads any Sea-Bird <span className="mono">.cnv</span>: columns come from the header, so the instrument does not matter. Positions come from the header or from latitude and longitude columns when the file has them.</li>
           <li>Raw casts are cut to the downcast for display. No sensor corrections are applied; process casts in Sea-Bird software first.</li>
-          <li>On a section, everything between stations is interpolated. The black seafloor joins each cast's deepest reading and the points you add. Ocean Data View does this in more depth; this is the no-install, shareable version.</li>
-          <li>Section colours are fixed per variable so the same colour means the same value on every section.</li>
+          <li>On a section, everything between stations is interpolated: a shape-preserving curve through the stations at every depth, or straight lines. Ocean Data View does this in more depth; this is the no-install, shareable version.</li>
+          <li>The black seafloor joins each cast's deepest reading and the points you add, or is read along the routed line from <a href="https://www.ncei.noaa.gov/products/seafloor-mapping" {...ext}>NOAA NCEI's DEM mosaic</a> (worldwide; coastal DEMs to 1/9 arc-second, ETOPO 2022 elsewhere) or <a href="https://emodnet.ec.europa.eu/en/bathymetry" {...ext}>EMODnet Bathymetry</a> (European seas). GEBCO's own grid cannot be read by a page in the browser; ETOPO 2022 is built on it in deep water.</li>
+          <li>Section colors are fixed per variable so the same color means the same value on every section.</li>
           <li>Your files and settings stay in this browser tab, including across a reload, and are gone when the tab closes.</li>
         </ul>
       </div>

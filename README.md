@@ -7,8 +7,8 @@ Depth profiles and transect sections from Sea-Bird `.cnv` CTD casts, in the brow
 ![Transect page: stations in order with a waypoint routing the line through the passage, the station map, and a temperature section](docs/transect.png)
 
 - **Stations** — drop in any number of `.cnv` files, or load the example casts. Names come from the filenames and can be edited. Switch stations in and out of the active set; both tools graph the active ones. Positions are read from the header or from latitude/longitude columns, or typed in any usual format.
-- **Profiles** — one graph per variable, active stations overlaid, depth down the page; or any variable against any other. Legend position, titles, widths, light or dark graphs, PNG download.
-- **Transect** — drag stations into order along the line, label them, add seafloor points between, before or beyond them, and drag waypoints on the map so the line follows the water rather than crossing land. Station map, one section per variable with fixed colour ranges so a colour always means the same value, or your own palette file (Surfer `.clr`/`.lvl`, GMT `.cpt`, ODV `.pal`, and more).
+- **Profiles** — one graph per variable, active stations overlaid, depth down the page; or any variable against any other. Legend position, titles, graphs per row, grid lines, light or dark graphs, PNG download.
+- **Transect** — drag stations into order along the line, label them, add seafloor points between them, and drag waypoints on the map so the line follows the water rather than crossing land, or carries on before the first station and beyond the last. The seafloor comes from the casts and your points, or is read along the routed line from NOAA NCEI's DEM mosaic (worldwide) or EMODnet Bathymetry (Europe). Station map, one section per variable with fixed color ranges so a color always means the same value, or your own palette file (Surfer `.clr`/`.lvl`, GMT `.cpt`, ODV `.pal`, and more).
 
 ![Profiles page](docs/profiles.png)
 
@@ -19,8 +19,10 @@ The same graphs as a Colab notebook: [CTD_Grapher_v2](https://github.com/jimothy
 ## Known limits
 
 - Sea-Bird `.cnv` only. Process casts in Sea-Bird software first: no sensor corrections are applied here, and a raw cast is only trimmed to its downcast for display.
-- On a section everything between stations is interpolated, and the seafloor is the casts' deepest readings plus the points and waypoint depths you add, not surveyed bathymetry. Bathymetry from GEBCO along the routed line is planned.
-- Fixed colour ranges are chosen for Puget Sound and temperate estuaries; switch to "this survey" or load a palette elsewhere.
+- On a section everything between stations is interpolated: a shape-preserving curve through the stations at every depth, or straight lines. Neither is a measurement.
+- Surveyed bathymetry is sampled along the routed line from NOAA NCEI's DEM mosaic (coastal DEMs to 1/9 arc-second, ETOPO 2022 elsewhere) or EMODnet (European seas); a cast that went deeper than the grid keeps its own depth. GEBCO's own services cannot be read by a page in the browser, though ETOPO 2022 is built on GEBCO in deep water. Datums differ: EMODnet is relative to lowest astronomical tide, the casts to the sea surface on the day.
+- Fixed color ranges are chosen for Puget Sound and temperate estuaries; switch to "this survey" or load a palette elsewhere.
+- Two instruments may log the same variable in different units (oxygen in mg/L and mL/L, say). The shared channel is preferred, and a remaining mismatch is flagged under the graph rather than converted.
 - Tested on the example casts and on 20 public files from SBE 9, 19, 19plus, 25, 25plus and 37 instruments. Send a `.cnv` that does not load.
 
 ## Develop

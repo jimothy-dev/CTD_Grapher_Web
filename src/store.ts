@@ -21,18 +21,19 @@ export interface Station {
   dropped: number        // rows removed by the downcast cut, 0 if untouched
 }
 
-// A seafloor point: km from its station towards `to`, and depth in m. `to` is
-// the neighbour's station id, or BEFORE / AFTER for a point out past the first
-// or last station, which extends the section. Anchoring to the neighbour means
-// dragging the rows about cannot silently move a point.
-export const BEFORE = '<before>'
-export const AFTER = '<after>'
+// A seafloor point: km from its station towards `to`, the neighbour's station
+// id. Anchoring to the neighbour means dragging the rows about cannot
+// silently move a point.
 export interface Mid { d: number | null; z: number | null; to: string | null }
 
-// A waypoint routes the line between a station and the next one on the
-// transect, so the distance runs through it instead of straight across
-// land. With a depth it is also a seafloor point at its place on the route.
+// A waypoint routes the line from a station towards the next one on the
+// transect, so the distance runs through it instead of straight across land.
+// Waypoints after the last station carry the line on beyond it, and `after`
+// set to BEFORE puts one ahead of the first station. With a depth a waypoint
+// is also a seafloor point at its place on the route.
+export const BEFORE = '<before>'
 export interface Waypoint { id: string; after: string; lat: number; lon: number; depth: number | null }
+export type SeafloorSource = 'casts' | 'ncei' | 'emodnet'
 
 export interface TransectState {
   order: string[]                       // station ids
@@ -66,13 +67,16 @@ export interface Settings {
   profileTitles: boolean
   profileTitleText: Record<string, string>   // per variable, overrides the auto title
   profileGraphTheme: GraphTheme
-  profileWidths: Record<string, number>      // per variable, percent of the row
+  graphsPerRow: number            // 1 to 4
+  profileGrid: boolean            // grid lines inside the profile graphs
   // extra graphs of one variable against another (or depth), e.g. Temperature vs Salinity
   customPairs: { x: string; y: string }[]
   // transect
   sectionVariables: Record<string, boolean>
   contourSteps: number
   rangeMode: 'fixed' | 'auto'
+  interpolation: 'linear' | 'smooth'   // between stations: straight, or a shape-preserving curve
+  seafloorSource: SeafloorSource       // the casts and typed points, or surveyed bathymetry along the route
   // uploaded palettes by the variable they colour; '*' colours every section
   palettes: Record<string, { clr: Clr; name: string }>
   showMap: boolean
@@ -105,8 +109,8 @@ interface State {
 const DEFAULT_SETTINGS: Settings = {
   variables: {}, depthMin: '', depthMax: '', lineShape: 'spline', legendPos: 'right',
   yVariable: 'depth', yInvert: true, yLabelMode: 'side', profileTitles: true, profileTitleText: {},
-  profileGraphTheme: effectiveTheme('system'), profileWidths: {}, customPairs: [],
-  sectionVariables: { Temperature: true }, contourSteps: 0, rangeMode: 'fixed',
+  profileGraphTheme: effectiveTheme('system'), graphsPerRow: 3, profileGrid: true, customPairs: [],
+  sectionVariables: { Temperature: true }, contourSteps: 0, rangeMode: 'fixed', interpolation: 'smooth', seafloorSource: 'casts',
   palettes: {}, showMap: true, sectionTitles: true, sectionTitleText: {}, sectionGraphTheme: effectiveTheme('system'),
   colorbarName: false, theme: 'system',
 }
@@ -140,9 +144,9 @@ function reconcile(t: TransectState, stations: Station[]): TransectState {
   for (const id of order) {
     on[id] = t.on[id] ?? true
     labels[id] = t.labels[id] ?? ''
-    mids[id] = t.mids[id] ?? []
+    mids[id] = (t.mids[id] ?? []).filter(m => m.to !== BEFORE && m.to !== '<after>')   // older sessions had typed points past the ends
   }
-  const waypoints = (t.waypoints ?? []).filter(w => ids.has(w.after))
+  const waypoints = (t.waypoints ?? []).filter(w => ids.has(w.after) || (w.after === BEFORE && order.length > 0))
   return { order, on, labels, mids, waypoints }
 }
 

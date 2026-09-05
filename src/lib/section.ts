@@ -1,16 +1,16 @@
 // Vertical section: distance along the transect against depth, coloured by
-// one variable. Interpolation in two passes: each cast onto a common depth
-// grid, then across stations at every depth. Interpolating between stations
-// invents structure that was never measured; the station markers on top show
-// where the real data is.
+// one variable. Two passes: each cast onto a common depth grid, then across
+// stations at every depth, either straight between neighbours or with a
+// shape-preserving cubic through every station. Interpolating between
+// stations invents structure that was never measured; the station markers on
+// top show where the real data is.
 import type { PlotData, Layout } from 'plotly.js'
-import { profile, type Cast } from './cnv'
+import { profile, unitMismatch, type Cast } from './cnv'
 import { alongTrack } from './geo'
 import { defaultScale, percentileRange, niceStep, type ColorStops } from './colors'
-import { labelWithUnits, prettyUnits } from './units'
+import { labelWithUnits, prettyUnits, unitFactor } from './units'
 
-export const BEFORE = '<before>'
-export const AFTER = '<after>'
+export interface RoutePoint { lat: number; lon: number; depth: number | null }
 
 export interface SectionStation {
   id: string
@@ -19,30 +19,41 @@ export interface SectionStation {
   lat: number
   lon: number
   cast: Cast
-  // seafloor points: km from here towards the station `to` (an id, or BEFORE /
-  // AFTER for a point out past the first or last station), depth m
+  // seafloor points: km from here towards the station `to` (its id; null means the next one), depth m
   mids: { d: number; z: number; to: string | null }[]
-  // waypoints routing the line from this station to the next, in order; a
-  // depth makes one a seafloor point at its place on the route
-  route?: { lat: number; lon: number; depth: number | null }[]
+  // waypoints from this station on: towards the next station, or, for the
+  // last station, out beyond the end of the line. A depth makes one a
+  // seafloor point at its place on the route.
+  route?: RoutePoint[]
+  // waypoints ahead of the first station, farthest first
+  lead?: RoutePoint[]
 }
 
-// Cumulative distance along the routed line: station, its waypoints, next
-// station. Also returns each waypoint's own distance for its seafloor depth.
-export function routeDistances(stations: SectionStation[]): { dist: number[]; waypointPts: [number, number][] } {
-  const dist = [0]
-  const waypointPts: [number, number][] = []
-  for (let i = 1; i < stations.length; i++) {
-    const prev = stations[i - 1]
-    const legs = [{ lat: prev.lat, lon: prev.lon }, ...(prev.route ?? []), { lat: stations[i].lat, lon: stations[i].lon }]
-    const along = alongTrack(legs)
-    for (let k = 1; k < legs.length - 1; k++) {
-      const w = (prev.route ?? [])[k - 1]
-      if (w.depth !== null && w.depth > 0) waypointPts.push([dist[i - 1] + along[k], w.depth])
-    }
-    dist.push(dist[i - 1] + along[along.length - 1])
+export interface Route {
+  dist: number[]                                   // each station's distance, the first at 0
+  xMin: number                                     // start of the line (0, or less with waypoints before)
+  xMax: number                                     // end of the line
+  path: { x: number; lat: number; lon: number }[]  // every vertex in order with its distance
+  waypointPts: [number, number][]                  // [distance, depth] of waypoints given a depth
+}
+
+// Cumulative distance along the routed line: waypoints before the first
+// station, then each station and the waypoints after it.
+export function routeDistances(stations: SectionStation[]): Route {
+  const vertices: RoutePoint[] = [...(stations[0]?.lead ?? [])]
+  const stationAt: number[] = []
+  for (const s of stations) {
+    stationAt.push(vertices.length)
+    vertices.push({ lat: s.lat, lon: s.lon, depth: null })
+    vertices.push(...(s.route ?? []))
   }
-  return { dist, waypointPts }
+  const along = alongTrack(vertices)
+  const offset = along[stationAt[0] ?? 0] ?? 0
+  const path = vertices.map((v, i) => ({ x: along[i] - offset, lat: v.lat, lon: v.lon }))
+  const isStation = new Set(stationAt)
+  const waypointPts: [number, number][] = []
+  vertices.forEach((v, i) => { if (!isStation.has(i) && v.depth !== null && v.depth > 0) waypointPts.push([path[i].x, v.depth]) })
+  return { dist: stationAt.map(i => path[i].x), xMin: path[0]?.x ?? 0, xMax: path[path.length - 1]?.x ?? 0, path, waypointPts }
 }
 
 export interface SectionOptions {
@@ -55,6 +66,11 @@ export interface SectionOptions {
   range?: [number, number] | 'auto' | null
   grid?: [number, number]
   colorbarName?: boolean     // "Temperature (°C)" on the colour bar rather than "°C"
+  interpolation?: 'linear' | 'smooth'
+  // surveyed seafloor along the route: distance and elevation (m above sea
+  // level, negative under water, null where the source has nothing)
+  seafloor?: { x: number; elevation: number | null }[] | null
+  seafloorName?: string
 }
 
 export interface SectionResult {
@@ -63,6 +79,7 @@ export interface SectionResult {
   distances: number[]
   units: string
   notes: string[]     // what was used, skipped and why, and any extension past the ends
+  warnings: string[]  // things to fix: land on the line, units that differ between stations
   used: number
   autoTitle: string
 }
@@ -103,14 +120,69 @@ function interp1(xp: number[], fp: number[], x: number): number {
   return x1 === x0 ? fp[k] : fp[k] + (fp[k + 1] - fp[k]) * (x - x0) / (x1 - x0)
 }
 
+// Shape-preserving cubic (PCHIP, Fritsch and Carlson 1980) through the
+// stations at one depth: smooth through each station, never overshooting the
+// values on either side, straight when there are only two stations. This is
+// the curved look of Surfer's and ODV's gridders without a smoothing radius
+// to choose, and it still passes exactly through every cast.
+function pchipSlopes(x: number[], y: number[]): number[] {
+  const n = x.length
+  const d = new Array<number>(n).fill(0)
+  if (n < 2) return d
+  const h: number[] = [], delta: number[] = []
+  for (let k = 0; k < n - 1; k++) { const hk = Math.max(x[k + 1] - x[k], 1e-9); h.push(hk); delta.push((y[k + 1] - y[k]) / hk) }
+  if (n === 2) { d[0] = d[1] = delta[0]; return d }
+  for (let k = 1; k < n - 1; k++) {
+    if (delta[k - 1] * delta[k] <= 0) { d[k] = 0; continue }
+    const w1 = 2 * h[k] + h[k - 1], w2 = h[k] + 2 * h[k - 1]
+    d[k] = (w1 + w2) / (w1 / delta[k - 1] + w2 / delta[k])
+  }
+  const end = (h0: number, h1: number, del0: number, del1: number) => {
+    let s = ((2 * h0 + h1) * del0 - h0 * del1) / (h0 + h1)
+    if (Math.sign(s) !== Math.sign(del0)) s = 0
+    else if (Math.sign(del0) !== Math.sign(del1) && Math.abs(s) > Math.abs(3 * del0)) s = 3 * del0
+    return s
+  }
+  d[0] = end(h[0], h[1], delta[0], delta[1])
+  d[n - 1] = end(h[n - 2], h[n - 3], delta[n - 2], delta[n - 3])
+  return d
+}
+
+// Segment index and position of each grid x along the stations, computed once.
+function segments(xp: number[], xs: number[]): { k: number; t: number; h: number }[] {
+  return xs.map(x => {
+    if (x <= xp[0]) return { k: 0, t: 0, h: 1 }
+    if (x >= xp[xp.length - 1]) return { k: xp.length - 2, t: 1, h: 1 }
+    let k = 0
+    while (k < xp.length - 2 && xp[k + 1] < x) k++
+    const h = Math.max(xp[k + 1] - xp[k], 1e-9)
+    return { k, t: (x - xp[k]) / h, h }
+  })
+}
+
 export function buildSection(stations: SectionStation[], opts: SectionOptions): SectionResult | null {
   if (stations.length < 2) return null
   const profs = stations.map(s => profile(s.cast, opts.shorts))
   if (profs.some(p => !p || !p.z.length)) return null
-  const { dist, waypointPts } = routeDistances(stations)
+  const route = routeDistances(stations)
+  const { dist, waypointPts } = route
   const last = stations.length - 1
   const dmin = opts.depthMin ?? null, dmax = opts.depthMax ?? null
-  const notes: string[] = []
+  const notes: string[] = [], warnings: string[] = []
+
+  // the first station's units rule; a station in the other oxygen unit is converted, anything else is reported
+  const units = profs[0]!.units
+  const converted: string[] = []
+  profs.forEach((p, i) => {
+    const f = unitFactor(p!.units, units)
+    if (f === null || f === 1) return
+    p!.v = p!.v.map(v => v * f); converted.push(`${stations[i].label} (${prettyUnits(p!.units, false)})`); p!.units = units
+  })
+  if (converted.length) notes.push(`converted to ${prettyUnits(units, false)}: ${converted.join(', ')}`)
+  const um = unitMismatch(profs.map((p, i) => ({ name: stations[i].label, units: p!.units })), opts.variable)
+  if (um) warnings.push(um)
+  const pressure = profs.filter(p => p!.depthLabel.startsWith('Pressure')).length
+  if (pressure && pressure < profs.length) warnings.push(`pressure (db) stands in for depth at ${stations.filter((_, i) => profs[i]!.depthLabel.startsWith('Pressure')).map(s => s.label).join(', ')}`)
 
   // each cast windowed, then its bottom
   const windowed = profs.map(p => {
@@ -125,27 +197,18 @@ export function buildSection(stations: SectionStation[], opts: SectionOptions): 
   if (windowed.some(w => !w.z.length)) return null
   const bottoms = windowed.map(w => w.z[w.z.length - 1])
 
-  // Seafloor line: cast bottoms plus typed points. A point belongs to the
-  // segment between its station and the neighbour it was measured towards; a
-  // point before the first or after the last station extends the section.
-  const floorPts: [number, number][] = dist.map((x, i) => [x, bottoms[i]])
+  // Seafloor from what the survey knows: cast bottoms, typed points and
+  // waypoint depths. A typed point belongs to the stretch between its station
+  // and the neighbour it was measured towards.
+  const own: [number, number][] = dist.map((x, i) => [x, bottoms[i]])
   let used = 0
-  for (const p of waypointPts) { floorPts.push(p); used++ }
+  for (const p of waypointPts) { own.push(p); used++ }
   const labelOf = (id: string | null) => (id === null ? null : stations.find(t => t.id === id)?.label ?? null)
-  let xMin = dist[0], xMax = dist[last]
   stations.forEach((s, i) => {
     for (const m of s.mids) {
       const { d, z } = m
       if (!(d > 0)) { notes.push(`${s.label}: point at ${d} km skipped, it must be more than 0 km from the station`); continue }
       if (!(z > 0)) { notes.push(`${s.label}: point at ${d} km skipped, depth must be above 0 m`); continue }
-      if (m.to === BEFORE || m.to === AFTER) {
-        const ok = m.to === BEFORE ? i === 0 : i === last
-        if (!ok) { notes.push(`${s.label}: point ${m.to === BEFORE ? 'before' : 'beyond'} the line skipped, the station is no longer at that end`); continue }
-        const x = m.to === BEFORE ? dist[0] - d : dist[last] + d
-        floorPts.push([x, z]); used++
-        xMin = Math.min(xMin, x); xMax = Math.max(xMax, x)
-        continue
-      }
       if (m.to === null && i === last) { notes.push(`${s.label}: points after the last station are not used`); continue }
       const j = m.to === null ? i + 1 : stations.findIndex(t => t.id === m.to)
       if (j !== i + 1 && j !== i - 1) {
@@ -154,14 +217,60 @@ export function buildSection(stations: SectionStation[], opts: SectionOptions): 
       }
       const seg = Math.abs(dist[j] - dist[i])
       if (d >= seg) { notes.push(`${s.label}: point at ${d} km skipped, ${stations[j].label} is only ${seg.toFixed(2)} km away`); continue }
-      floorPts.push([j > i ? dist[i] + d : dist[i] - d, z])
+      own.push([j > i ? dist[i] + d : dist[i] - d, z])
       used++
     }
   })
-  floorPts.sort((a, b) => a[0] - b[0])
+
+  // Surveyed bathymetry along the route replaces the straight joins. A cast
+  // or point that is deeper than the grid says stays: the grid cell may be
+  // wide and the instrument was there. Land samples come up to the surface
+  // and are reported so a waypoint can steer the line back into the water.
+  let floorPts: [number, number][]
+  const all = opts.seafloor ?? null
+  const valid = (all ?? []).filter(s => s.elevation !== null) as { x: number; elevation: number }[]
+  if (all && valid.length >= 2) {
+    const name = opts.seafloorName ?? 'bathymetry'
+    const bathy: [number, number][] = valid.map(s => [s.x, Math.max(0, -s.elevation)])
+    const bx = bathy.map(p => p[0]), bz = bathy.map(p => p[1])
+    // a place counts as surveyed when a sample with data lies within a couple of sample spacings
+    const steps = all.slice(1).map((s, i) => s.x - all[i].x).filter(v => v > 0).sort((a, b) => a - b)
+    const near = steps.length ? 2.5 * steps[Math.floor(steps.length / 2)] : Infinity
+    const covered = (x: number) => {
+      let lo = 0, hi = bx.length - 1
+      while (lo < hi) { const mid = (lo + hi) >> 1; if (bx[mid] < x) lo = mid + 1; else hi = mid }
+      return Math.abs(bx[lo] - x) <= near || (lo > 0 && Math.abs(bx[lo - 1] - x) <= near)
+    }
+    // where the survey has no data the casts and typed points stand in; where it has, only a deeper one is kept
+    const inGaps = own.filter(([x]) => !covered(x))
+    const deeper = own.filter(([x, z]) => covered(x) && z > interp1(bx, bz, x) + 0.5)
+    floorPts = [...bathy, ...inGaps, ...deeper]
+    const span = ([a, b]: [number, number]) => (b - a < 0.05 ? `${a.toFixed(2)}` : `${a.toFixed(2)} to ${b.toFixed(2)}`)
+    const runs = (pick: (s: { x: number; elevation: number | null }) => boolean) => {
+      const out: [number, number][] = []
+      for (const s of all) {
+        if (!pick(s)) continue
+        const run = out[out.length - 1]
+        if (run && s.x - run[1] <= near) run[1] = s.x; else out.push([s.x, s.x])
+      }
+      return out
+    }
+    notes.push(`seafloor from ${name} (${valid.length} samples)${deeper.length ? `; ${deeper.length} cast bottom${deeper.length === 1 ? '' : 's'} or point${deeper.length === 1 ? '' : 's'} deeper than the grid kept` : ''}`)
+    const gaps = runs(s => s.elevation === null)
+    if (gaps.length) notes.push(`${name} has no data at ${gaps.map(span).join(', ')} km, so the seafloor there comes from the casts and your points`)
+    const land = runs(s => s.elevation !== null && s.elevation >= 0)
+    if (land.length) warnings.push(`${name} shows land at ${land.map(span).join(', ')} km along the line, drawn up to the surface; drag a waypoint to keep the line in the water`)
+    used = 0
+  } else {
+    if (all) notes.push(`${opts.seafloorName ?? 'bathymetry'}: no data along this line, so the seafloor comes from the casts and your points`)
+    floorPts = own
+  }
+  floorPts.sort((a, b) => a[0] - b[0] || b[1] - a[1])
+  floorPts = floorPts.filter((p, i) => i === 0 || p[0] - floorPts[i - 1][0] > 1e-9)   // one depth per distance, the deeper
   const deepestFloor = Math.max(...floorPts.map(p => p[1]))
-  if (xMin < dist[0]) notes.push(`extended ${(dist[0] - xMin).toFixed(2)} km before ${stations[0].label}, colours there repeat that station`)
-  if (xMax > dist[last]) notes.push(`extended ${(xMax - dist[last]).toFixed(2)} km beyond ${stations[last].label}, colours there repeat that station`)
+  const { xMin, xMax } = route
+  if (xMin < dist[0]) notes.push(`extended ${(dist[0] - xMin).toFixed(2)} km before ${stations[0].label}, colors there repeat that station`)
+  if (xMax > dist[last]) notes.push(`extended ${(xMax - dist[last]).toFixed(2)} km beyond ${stations[last].label}, colors there repeat that station`)
 
   const top = dmin ?? Math.min(...windowed.map(w => w.z[0]))
   const bot = dmax ?? Math.max(Math.max(...bottoms), deepestFloor)
@@ -171,23 +280,54 @@ export function buildSection(stations: SectionStation[], opts: SectionOptions): 
   const ys = Array.from({ length: ny }, (_, j) => surface + (bot - surface) * j / (ny - 1))
 
   const columns = windowed.map(w => resample(w.z, w.v, ys))
-  // horizontal pass: linear between stations at every depth, held constant
-  // past the end stations when the section is extended
+  // horizontal pass at every depth, held constant past the end stations
+  // when the section is extended
+  const smooth = (opts.interpolation ?? 'smooth') === 'smooth' && stations.length > 2
+  const segs = segments(dist, xs)
   const z: number[][] = []
   for (let j = 0; j < ny; j++) {
+    const vals = columns.map(c => c[j])
     const row = new Array<number>(nx)
-    for (let i = 0; i < nx; i++) row[i] = interp1(dist, columns.map(c => c[j]), xs[i])
+    if (smooth) {
+      const d = pchipSlopes(dist, vals)
+      for (let i = 0; i < nx; i++) {
+        const { k, t, h } = segs[i]
+        const t2 = t * t, t3 = t2 * t
+        row[i] = (2 * t3 - 3 * t2 + 1) * vals[k] + (t3 - 2 * t2 + t) * h * d[k] + (-2 * t3 + 3 * t2) * vals[k + 1] + (t3 - t2) * h * d[k + 1]
+      }
+    } else {
+      for (let i = 0; i < nx; i++) row[i] = interp1(dist, vals, xs[i])
+    }
     z.push(row)
   }
-  // the polygon passes through every typed point exactly and stays inside the window
-  const px = [...new Set([...xs, ...floorPts.map(p => p[0])])].sort((a, b) => a - b)
-  const floor = px.map(x => Math.min(Math.max(interp1(floorPts.map(p => p[0]), floorPts.map(p => p[1]), x), surface), bot))
+  // the polygon passes through every seafloor point exactly and stays inside the window
+  const fx = floorPts.map(p => p[0]), fz = floorPts.map(p => p[1])
+  const floorAt = (x: number) => Math.min(Math.max(interp1(fx, fz, x), surface), bot)
+  const px = [...new Set([...xs, ...fx])].sort((a, b) => a - b)
+  const floor = px.map(floorAt)
 
-  const units = profs[0]!.units
+  // Below the seafloor the field is blanked and hover on the blank is off, so
+  // hovering over the black polygon shows nothing. Each column takes the
+  // deepest polygon vertex within a cell of it, so a vertex that falls
+  // between columns never leaves a sliver of background above the black;
+  // the blank starts a cell and a half under that.
+  const dy = (bot - surface) / (ny - 1), dx = nx > 1 ? (xMax - xMin) / (nx - 1) : 0
+  const floorAtX = xs.map(x => {
+    let m = floorAt(x)
+    for (const [vx, vz] of floorPts) { if (vx < x - dx) continue; if (vx > x + dx) break; m = Math.max(m, Math.min(Math.max(vz, surface), bot)) }
+    return m
+  })
+  for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) if (ys[j] > floorAtX[i] + 1.5 * dy) z[j][i] = NaN
+
+  // an automatic colour range reads only what is drawn: between the stations, above the seafloor
   const def = defaultScale(opts.variable, units)
   const colorscale = opts.colorscale ?? def.colorscale
   let range: [number, number] | null = null
-  if (opts.range === 'auto' || (!opts.range && !def.range)) range = percentileRange(z.flat())
+  if (opts.range === 'auto' || (!opts.range && !def.range)) {
+    const shown: number[] = []
+    for (let i = 0; i < nx; i++) if (xs[i] >= dist[0] - 1e-9 && xs[i] <= dist[last] + 1e-9) for (let j = 0; j < ny; j++) shown.push(z[j][i])
+    range = percentileRange(shown.length ? shown : z.flat())
+  }
   else if (Array.isArray(opts.range)) range = opts.range
   else range = def.range
   if (!range || range[0] === range[1]) range = range ? [range[0] - 0.5, range[1] + 0.5] : [0, 1]
@@ -208,7 +348,7 @@ export function buildSection(stations: SectionStation[], opts: SectionOptions): 
 
   const data: Partial<PlotData>[] = [{
     type: 'contour', x: xs, y: ys, z, colorscale, zmin: range[0], zmax: range[1], zauto: false,
-    contours, line: { width: 0.5, color: 'rgba(0,0,0,0.35)' }, connectgaps: false,
+    contours, line: { width: 0.5, color: 'rgba(0,0,0,0.35)' }, connectgaps: false, hoverongaps: false,
     colorbar: { title: { text: cbTitle, side: 'right' }, thickness: 14, len: 0.9, outlinewidth: 0, tick0: range[0], dtick: tick, tickformat: '.2f' },
     hovertemplate: `%{x:.2f} km<br>%{y:.1f} m<br>${opts.variable}: %{z:.3f} ${unitText}<extra></extra>`,
   } as Partial<PlotData>, {
@@ -232,5 +372,5 @@ export function buildSection(stations: SectionStation[], opts: SectionOptions): 
     modebar: { remove: ['zoom2d', 'pan2d', 'select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'resetScale2d'] },
   }
   if (used) notes.unshift(`${used} seafloor point${used === 1 ? '' : 's'} used`)
-  return { data, layout, distances: dist, units, notes, used, autoTitle: `${opts.variable} section` }
+  return { data, layout, distances: dist, units, notes, warnings, used, autoTitle: `${opts.variable} section` }
 }

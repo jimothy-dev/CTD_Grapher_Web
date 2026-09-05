@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type CSSProperties } from 'react'
 import { Link } from 'react-router-dom'
 import { useStore, type LegendPos } from '../store'
 import { availableVariables } from '../lib/cnv'
@@ -28,14 +28,14 @@ export default function Profiles() {
   [variables, settings.yVariable])
 
   const profileStations = useMemo(() => active.map(s => ({ id: s.id, name: s.name, color: s.color, cast: s.cast })), [active])
-  const common = { depthMin: dmin, depthMax: dmax, lineShape: settings.lineShape, legendPos: settings.legendPos, yLabelMode: settings.yLabelMode }
+  const common = { depthMin: dmin, depthMax: dmax, lineShape: settings.lineShape, legendPos: settings.legendPos, yLabelMode: settings.yLabelMode, showGrid: settings.profileGrid }
 
   const figures = useMemo(() => variables
     .filter(v => isOn(v.name, v.on) && v.name !== yChoice.name)
     .map(v => buildProfile(profileStations, { variable: v.name, shorts: v.shorts, y: yChoice, yInvert: settings.yInvert, ...common }))
     .filter((f): f is NonNullable<typeof f> => f !== null),
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  [profileStations, variables, settings.variables, dmin, dmax, settings.lineShape, settings.legendPos, settings.yInvert, settings.yLabelMode, yChoice])
+  [profileStations, variables, settings.variables, dmin, dmax, settings.lineShape, settings.legendPos, settings.yInvert, settings.yLabelMode, settings.profileGrid, yChoice])
 
   // Custom pairs: any variable against any other, or against depth. Depth
   // reads downward as usual; a variable on Y reads upward.
@@ -48,7 +48,7 @@ export default function Profiles() {
     return fig ? { key: `${p.x}|${p.y}`, pair: p, fig } : null
   }).filter((p): p is NonNullable<typeof p> => p !== null),
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  [profileStations, variables, settings.customPairs, dmin, dmax, settings.lineShape, settings.legendPos, settings.yInvert, settings.yLabelMode])
+  [profileStations, variables, settings.customPairs, dmin, dmax, settings.lineShape, settings.legendPos, settings.yInvert, settings.yLabelMode, settings.profileGrid])
 
   if (!active.length) return <div className="empty">No active stations. <Link to="/">Add or switch some on.</Link></div>
 
@@ -62,20 +62,22 @@ export default function Profiles() {
     if (settings.customPairs.some(q => q.x === p.x && q.y === p.y)) return
     setSettings({ customPairs: [...settings.customPairs, p] })
   }
+  const noteFor = (f: NonNullable<ReturnType<typeof buildProfile>>) =>
+    [f.missing.length ? `not in: ${f.missing.join(', ')}` : '', ...f.warnings].filter(Boolean).join(' · ') || undefined
   const card = (key: string, f: NonNullable<ReturnType<typeof buildProfile>>, onRemove?: () => void) => (
     <PlotCard key={key} data={f.data} layout={f.layout} filename={f.autoTitle.replace(/\W+/g, '_')} height={520}
       theme={settings.profileGraphTheme} autoTitle={f.autoTitle} title={settings.profileTitleText[key]} showTitle={settings.profileTitles}
       onTitle={t => setSettings({ profileTitleText: { ...settings.profileTitleText, [key]: t } })}
-      width={settings.profileWidths[key] ?? 33} onWidth={w => setSettings({ profileWidths: { ...settings.profileWidths, [key]: w } })}
-      onRemove={onRemove} note={f.missing.length ? `not in: ${f.missing.join(', ')}` : undefined} />
+      onRemove={onRemove} note={noteFor(f)} />
   )
+  const perRow = Math.min(Math.max(settings.graphsPerRow || 3, 1), 4)
 
   return (
     <div className="stack">
       <div className="row" style={{ justifyContent: 'space-between', alignItems: 'end' }}>
         <div>
           <h1>Profiles</h1>
-          <p className="muted small">Vertical profiles: each cast as a line against depth. Click a name in a legend to hide it.</p>
+          <p className="muted small">Vertical profiles: each cast as a line against depth. Click a name in a legend to hide that station.</p>
         </div>
       </div>
       <div className="row">
@@ -93,14 +95,16 @@ export default function Profiles() {
             {variables.map(v => <option key={v.name} value={v.name}>{v.name}</option>)}
           </select>
         </label>
-        <label className="field">y direction{seg(settings.yInvert ? 'down' : 'up', [['down', 'largest at bottom'], ['up', 'largest at top']], v => setSettings({ yInvert: v === 'down' }))}</label>
-        <label className="field">y label{seg(settings.yLabelMode, [['side', 'along the axis'], ['top', 'upright at top']], v => setSettings({ yLabelMode: v }))}</label>
-        <label className="field">legend{seg<LegendPos>(settings.legendPos, [['left', 'left'], ['right', 'right'], ['bottom', 'bottom']], v => setSettings({ legendPos: v }))}</label>
-        <label className="field">line{seg(settings.lineShape, [['spline', 'smooth'], ['linear', 'raw']], v => setSettings({ lineShape: v }))}</label>
-        <label className="field">depth from, m<input type="number" value={settings.depthMin} placeholder="surface" style={{ width: 92 }} onChange={e => setSettings({ depthMin: e.target.value })} /></label>
-        <label className="field">to, m<input type="number" value={settings.depthMax} placeholder="bottom" style={{ width: 92 }} onChange={e => setSettings({ depthMax: e.target.value })} /></label>
+        <div className="field">y direction{seg(settings.yInvert ? 'down' : 'up', [['down', 'largest at bottom'], ['up', 'largest at top']], v => setSettings({ yInvert: v === 'down' }))}</div>
+        <div className="field">y label{seg(settings.yLabelMode, [['side', 'along the axis'], ['top', 'top']], v => setSettings({ yLabelMode: v }))}</div>
+        <div className="field">legend{seg<LegendPos>(settings.legendPos, [['left', 'left'], ['right', 'right'], ['bottom', 'bottom']], v => setSettings({ legendPos: v }))}</div>
+        <div className="field">line{seg(settings.lineShape, [['spline', 'smooth'], ['linear', 'raw']], v => setSettings({ lineShape: v }))}</div>
+        <label className="field">depth from (m)<input type="number" value={settings.depthMin} placeholder="surface" style={{ width: 92 }} onChange={e => setSettings({ depthMin: e.target.value })} /></label>
+        <label className="field">depth to (m)<input type="number" value={settings.depthMax} placeholder="bottom" style={{ width: 92 }} onChange={e => setSettings({ depthMax: e.target.value })} /></label>
+        <label className="field">grid lines<input type="checkbox" className="switch" checked={settings.profileGrid} onChange={e => setSettings({ profileGrid: e.target.checked })} /></label>
         <label className="field">titles<input type="checkbox" className="switch" checked={settings.profileTitles} onChange={e => setSettings({ profileTitles: e.target.checked })} /></label>
-        <label className="field">graphs{seg(settings.profileGraphTheme, [['light', 'light'], ['dark', 'dark']], v => setSettings({ profileGraphTheme: v }))}</label>
+        <label className="field">graphs per row<input type="number" min={1} max={4} step={1} value={perRow} style={{ width: 64 }} aria-label="Graphs per row, 1 to 4" onChange={e => { const v = parseInt(e.target.value, 10); if (v >= 1 && v <= 4) setSettings({ graphsPerRow: v }) }} /></label>
+        <div className="field">graphs{seg(settings.profileGraphTheme, [['light', 'light'], ['dark', 'dark']], v => setSettings({ profileGraphTheme: v }))}</div>
       </div>
       <div className="card controls" title="Any variable against any other, or against depth, added as an extra graph">
         <span className="small muted" style={{ alignSelf: 'center' }}>extra graph:</span>
@@ -119,7 +123,7 @@ export default function Profiles() {
         {pairs.length > 0 && <span className="small muted">{pairs.length} extra</span>}
       </div>
       {figures.length === 0 && pairs.length === 0 && <div className="empty">Nothing to draw. Tick a variable, or widen the depth window.</div>}
-      <div className="plots">
+      <div className="plots" style={{ '--per-row': perRow } as CSSProperties}>
         {figures.map(f => card(f.variable, f))}
         {pairs.map(p => card(p.key, p.fig, () => setSettings({ customPairs: settings.customPairs.filter(q => !(q.x === p.pair.x && q.y === p.pair.y)) })))}
       </div>

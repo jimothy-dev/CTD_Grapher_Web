@@ -4,6 +4,7 @@
 // relative (no absolute tolerance), or every near-zero reading would be wiped.
 // Headers are cp1252, not UTF-8 (the theta in sigma-theta): decode as
 // windows-1252 before calling parseCnv.
+import { canonicalUnit } from './units'
 
 export interface Column {
   index: number
@@ -153,18 +154,39 @@ export function depthColumn(cast: Cast): { col: Column; label: string } | null {
 
 export interface VariableInfo { name: string; units: string; shorts: string[]; on: boolean }
 
-// Variables present in at least one of the casts, with the units of the first
-// channel found. Oxygen may be mg/L in one cast and mL/L in another: the units
-// belong to the channel, so a mismatch is reported per station elsewhere.
+// Variables present in at least one of the casts. The short names are
+// reordered so a channel that every cast carries comes first: two instruments
+// may both log oxygen in mL/L while one also logs mg/L, and picking the shared
+// channel keeps a graph in one unit. Units come from the first cast with the
+// winning channel; a mismatch that remains is reported per station by the
+// profile and section builders.
 export function availableVariables(casts: Cast[]): VariableInfo[] {
   const out: VariableInfo[] = []
   for (const v of VARIABLES) {
-    for (const cast of casts) {
-      const col = findColumn(cast, v.shorts)
-      if (col) { out.push({ name: v.name, units: col.units, shorts: v.shorts, on: v.on }); break }
-    }
+    const count = (s: string) => casts.filter(c => c.columns.some(col => col.short.toLowerCase() === s)).length
+    const present = v.shorts.map((s, i) => ({ s, i, n: count(s) })).filter(e => e.n > 0).sort((a, b) => b.n - a.n || a.i - b.i).map(e => e.s)
+    if (!present.length) continue
+    const shorts = [...present, ...v.shorts.filter(s => !present.includes(s))]
+    const col = casts.map(c => findColumn(c, shorts)).find(c => c)!
+    out.push({ name: v.name, units: col.units, shorts, on: v.on })
   }
   return out
+}
+
+// Units of the channel each cast would use for a variable, for spotting a
+// graph that mixes mg/L with mL/L or depth with pressure.
+export function unitsByStation(casts: { name: string; cast: Cast }[], shorts: string[]): { name: string; units: string }[] {
+  return casts.map(s => ({ name: s.name, units: findColumn(s.cast, shorts)?.units ?? '' }))
+}
+
+// One line naming the odd ones out, or null when every station agrees.
+export function unitMismatch(list: { name: string; units: string }[], what: string): string | null {
+  const norm = canonicalUnit
+  const used = list.filter(s => s.units)
+  const distinct = [...new Set(used.map(s => norm(s.units)))]
+  if (distinct.length < 2) return null
+  const groups = distinct.map(u => `${used.filter(s => norm(s.units) === u).map(s => s.name).join(', ')} in ${used.find(s => norm(s.units) === u)!.units}`)
+  return `${what} units differ and are not converted: ${groups.join('; ')}`
 }
 
 export interface Profile { z: number[]; v: number[]; units: string; channel: string; depthLabel: string }
