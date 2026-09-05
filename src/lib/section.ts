@@ -1,9 +1,8 @@
 // Vertical section: distance along the transect against depth, coloured by
 // one variable. Two passes: each cast onto a common depth grid, then across
-// stations at every depth, either straight between neighbours or with a
-// shape-preserving cubic through every station. Interpolating between
-// stations invents structure that was never measured; the station markers on
-// top show where the real data is.
+// the stations at every depth with a shape-preserving cubic through every
+// station. Interpolating between stations invents structure that was never
+// measured; the station markers on top show where the real data is.
 import type { PlotData, Layout } from 'plotly.js'
 import { profile, unitMismatch, type Cast } from './cnv'
 import { alongTrack } from './geo'
@@ -64,8 +63,6 @@ export interface SectionOptions {
   range?: [number, number] | 'auto' | null
   grid?: [number, number]
   colorbarName?: boolean     // "Temperature (°C)" on the colour bar rather than "°C"
-  interpolation?: 'smooth' | 'oa' | 'linear'
-  oaScale?: number | null      // objective analysis covariance scale in km; null or 0 means twice the mean station spacing
   // surveyed seafloor along the route: distance and elevation (m above sea
   // level, negative under water, null where the source has nothing)
   seafloor?: { x: number; elevation: number | null }[] | null
@@ -145,51 +142,6 @@ function pchipSlopes(x: number[], y: number[]): number[] {
   d[0] = end(h[0], h[1], delta[0], delta[1])
   d[n - 1] = end(h[n - 2], h[n - 3], delta[n - 2], delta[n - 3])
   return d
-}
-
-// Objective analysis (Gauss-Markov optimal interpolation, Bretherton, Davis
-// and Fandry 1976), the gridder of the oceanographic literature, applied
-// along the line at every depth. Each station's departure from the mean at
-// that depth is weighted through a Markov (exponential) covariance with scale
-// L. The exponential form was chosen over the Gaussian one after measuring
-// both: with a Gaussian the field rang by up to a salinity unit between two
-// casts that agreed, and two close stations were averaged; the Markov form
-// never overshoots between neighbours. The tiny noise term only keeps the
-// solve well posed, so the field passes through every cast; between stations
-// far apart compared with L it eases towards that depth's mean, which a
-// longer L flattens. The station covariance is factorised once, so a depth
-// level costs a few multiplies.
-function gaussMarkov(xp: number[], xs: number[], L: number, eps: number): (vals: number[]) => number[] {
-  const n = xp.length
-  const cov = (a: number, b: number) => Math.exp(-Math.abs(a - b) / L)
-  const lu = luFactor(xp.map((a, i) => xp.map((b, j) => cov(a, b) + (i === j ? eps : 0))))
-  const G = xs.map(x => { const xc = Math.min(Math.max(x, xp[0]), xp[n - 1]); return xp.map(b => cov(xc, b)) })   // held constant past the ends
-  return vals => {
-    const mean = vals.reduce((s, v) => s + v, 0) / n
-    const alpha = luSolve(lu, vals.map(v => v - mean))
-    return G.map(g => { let s = mean; for (let j = 0; j < n; j++) s += g[j] * alpha[j]; return s })
-  }
-}
-function luFactor(a: number[][]): { lu: number[][]; piv: number[] } {
-  const n = a.length, lu = a.map(r => [...r]), piv = Array.from({ length: n }, (_, i) => i)
-  for (let k = 0; k < n; k++) {
-    let p = k
-    for (let i = k + 1; i < n; i++) if (Math.abs(lu[i][k]) > Math.abs(lu[p][k])) p = i
-    if (p !== k) { [lu[k], lu[p]] = [lu[p], lu[k]]; [piv[k], piv[p]] = [piv[p], piv[k]] }
-    const d = lu[k][k] || 1e-12
-    for (let i = k + 1; i < n; i++) {
-      const f = lu[i][k] / d
-      lu[i][k] = f
-      for (let j = k + 1; j < n; j++) lu[i][j] -= f * lu[k][j]
-    }
-  }
-  return { lu, piv }
-}
-function luSolve({ lu, piv }: { lu: number[][]; piv: number[] }, b: number[]): number[] {
-  const n = lu.length, y = piv.map(i => b[i])
-  for (let i = 1; i < n; i++) for (let j = 0; j < i; j++) y[i] -= lu[i][j] * y[j]
-  for (let i = n - 1; i >= 0; i--) { for (let j = i + 1; j < n; j++) y[i] -= lu[i][j] * y[j]; y[i] /= lu[i][i] || 1e-12 }
-  return y
 }
 
 // Segment index and position of each grid x along the stations, computed once.
@@ -307,19 +259,15 @@ export function buildSection(stations: SectionStation[], opts: SectionOptions): 
   const columns = windowed.map(w => resample(w.z, w.v, ys))
   // horizontal pass at every depth, held constant past the end stations
   // when the section is extended
-  const method = opts.interpolation ?? 'smooth'
-  const smooth = method === 'smooth' && stations.length > 2
-  const spacing = Math.max((dist[last] - dist[0]) / last, 0.01)          // mean spacing between neighbouring stations
-  const scale = opts.oaScale && opts.oaScale > 0 ? opts.oaScale : 2 * spacing
-  const oa = method === 'oa' ? gaussMarkov(dist, xs, scale, 1e-4) : null
-  if (oa) notes.push(`objective analysis, Markov covariance, scale ${scale >= 1 ? `${scale.toFixed(1)} km` : `${Math.round(scale * 1000)} m`}${opts.oaScale && opts.oaScale > 0 ? '' : ' (twice the mean station spacing)'}`)
+  // across the stations at every depth: a shape-preserving curve through
+  // them (straight when there are only two), held constant past the ends
+  const smooth = stations.length > 2
   const segs = segments(dist, xs)
   const z: number[][] = []
   for (let j = 0; j < ny; j++) {
     const vals = columns.map(c => c[j])
-    let row = new Array<number>(nx)
-    if (oa) row = oa(vals)
-    else if (smooth) {
+    const row = new Array<number>(nx)
+    if (smooth) {
       const d = pchipSlopes(dist, vals)
       for (let i = 0; i < nx; i++) {
         const { k, t, h } = segs[i]

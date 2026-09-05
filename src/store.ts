@@ -71,14 +71,11 @@ export interface Settings {
   sectionVariables: Record<string, boolean>
   contourSteps: number
   rangeMode: 'fixed' | 'auto'
-  interpolation: 'smooth' | 'oa' | 'linear'   // between stations: a shape-preserving curve, objective analysis, or straight lines
-  oaScale: string                      // objective analysis scale in km; blank means twice the mean station spacing
   seafloorSource: SeafloorSource       // the casts and waypoint depths, or surveyed bathymetry along the route
   // uploaded palettes by the variable they colour; '*' colours every section
   palettes: Record<string, { clr: Clr; name: string }>
   showMap: boolean
-  mapStyle: 'streets' | 'ocean'   // OpenStreetMap, or Esri's Ocean Basemap with depth shading
-  mapRelief: boolean              // GEBCO shaded relief laid over the base map
+  mapStyle: 'streets' | 'ocean'   // OpenStreetMap, or Esri's Ocean Basemap with depth shading (the default)
   sectionTitles: boolean
   sectionTitleText: Record<string, string>
   sectionGraphTheme: GraphTheme
@@ -110,9 +107,9 @@ const DEFAULT_SETTINGS: Settings = {
   variables: {}, depthMin: '', depthMax: '', lineShape: 'spline', legendPos: 'right',
   yVariable: 'depth', yInvert: true, yLabelMode: 'side', profileTitles: true, profileTitleText: {},
   profileGraphTheme: effectiveTheme('system'), graphsPerRow: 3, profileGrid: true, customPairs: [],
-  sectionVariables: { Temperature: true }, contourSteps: 0, rangeMode: 'fixed', interpolation: 'smooth', oaScale: '', seafloorSource: 'casts',
-  palettes: {}, showMap: true, mapStyle: 'streets', mapRelief: false, sectionTitles: true, sectionTitleText: {}, sectionGraphTheme: effectiveTheme('system'),
-  colorbarName: false, theme: 'system',
+  sectionVariables: { Temperature: true }, contourSteps: 0, rangeMode: 'fixed', seafloorSource: 'casts',
+  palettes: {}, showMap: true, mapStyle: 'ocean', sectionTitles: true, sectionTitleText: {}, sectionGraphTheme: effectiveTheme('system'),
+  colorbarName: true, theme: 'system',
 }
 
 let nextId = 1

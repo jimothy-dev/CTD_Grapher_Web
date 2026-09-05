@@ -48,30 +48,22 @@ function carryOn(from: LatLon, towards: LatLon | null): LatLon {
   return { lat: +(from.lat + 0.25 * (from.lat - towards.lat)).toFixed(5), lon: +(from.lon + 0.25 * (from.lon - towards.lon)).toFixed(5) }
 }
 
-// Base maps and overlays as raster tile layers under the traces. Esri's Ocean
-// Basemap shades depth (GEBCO-derived) and is free to use with attribution;
-// GEBCO's own WMS serves shaded-relief tiles in web mercator.
+// The ocean base map is Esri's Ocean Basemap, raster tiles under the traces:
+// depth shading and soundings drawn from GEBCO and NOAA charts, free to use
+// with attribution. Streets is OpenStreetMap, Plotly's built-in style.
 const ESRI_OCEAN = 'https://services.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}'
 const ESRI_OCEAN_REF = 'https://services.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Reference/MapServer/tile/{z}/{y}/{x}'
-const GEBCO_WMS = 'https://wms.gebco.net/mapserv?request=getmap&service=wms&version=1.3.0&crs=EPSG:3857&layers=GEBCO_LATEST&styles=&format=image/png&transparent=true&width=256&height=256&bbox={bbox-epsg-3857}'
-export const MAP_CREDITS = {
-  ocean: { text: 'Ocean base map: Esri, GEBCO, NOAA, National Geographic, DeLorme, HERE, Geonames.org and other contributors', url: 'https://www.arcgis.com/home/item.html?id=1e126e7520f9466c9ca28b8f28b5e500' },
-  relief: { text: 'Relief: imagery reproduced from the GEBCO_2026 Grid, GEBCO Compilation Group (2026) GEBCO 2026 Grid (doi:10.5285/4f68d5c7-45eb-f999-e063-7086abc036fa)', url: 'https://www.gebco.net/data-products/gridded-bathymetry-data' },
-}
+export const MAP_CREDITS = { text: 'Ocean base map: Esri, GEBCO, NOAA, National Geographic, DeLorme, HERE, Geonames.org and other contributors', url: 'https://www.arcgis.com/home/item.html?id=1e126e7520f9466c9ca28b8f28b5e500' }
 type MapStyle = 'streets' | 'ocean'
-type RasterLayer = { sourcetype: 'raster'; source: string[]; below: 'traces'; opacity?: number }
-function mapLayers(style: MapStyle, relief: boolean): RasterLayer[] {
-  const layers: RasterLayer[] = []
-  if (style === 'ocean') layers.push({ sourcetype: 'raster', source: [ESRI_OCEAN], below: 'traces' })
-  if (relief) layers.push({ sourcetype: 'raster', source: [GEBCO_WMS], below: 'traces', opacity: 0.55 })
-  if (style === 'ocean') layers.push({ sourcetype: 'raster', source: [ESRI_OCEAN_REF], below: 'traces' })
-  return layers
+type RasterLayer = { sourcetype: 'raster'; source: string[]; below: 'traces' }
+function mapLayers(style: MapStyle): RasterLayer[] {
+  return style === 'ocean' ? [{ sourcetype: 'raster', source: [ESRI_OCEAN], below: 'traces' }, { sourcetype: 'raster', source: [ESRI_OCEAN_REF], below: 'traces' }] : []
 }
 
 // Map traces: 0 the routed line, 1 the waypoints, then one per station. The
 // first two keep their slots even when empty, so a drag can restyle them.
 type MapView = { center: { lat: number; lon: number }; zoom: number }
-function mapFigure(stations: { name: string; color: string; lat: number; lon: number }[], line: LatLon[], waypoints: Waypoint[], view: MapView | null, style: MapStyle, relief: boolean): { data: Partial<PlotData>[]; layout: Partial<Layout> } {
+function mapFigure(stations: { name: string; color: string; lat: number; lon: number }[], line: LatLon[], waypoints: Waypoint[], view: MapView | null, style: MapStyle): { data: Partial<PlotData>[]; layout: Partial<Layout> } {
   const lats = stations.map(s => s.lat), lons = stations.map(s => s.lon)
   const midLat = lats.reduce((a, b) => a + b, 0) / lats.length
   const midLon = lons.reduce((a, b) => a + b, 0) / lons.length
@@ -91,7 +83,7 @@ function mapFigure(stations: { name: string; color: string; lat: number; lon: nu
   // so a redraw for a moved waypoint or a typed label does not jump the view
   const layout = {
     margin: { l: 0, r: 0, t: 0, b: 0 }, legend: { title: { text: 'Station' } }, uirevision: 'map',
-    map: { style: style === 'ocean' ? 'white-bg' : 'open-street-map', center: view?.center ?? { lat: midLat, lon: midLon }, zoom: view?.zoom ?? autoZoom, layers: mapLayers(style, relief) },
+    map: { style: style === 'ocean' ? 'white-bg' : 'open-street-map', center: view?.center ?? { lat: midLat, lon: midLon }, zoom: view?.zoom ?? autoZoom, layers: mapLayers(style) },
   } as unknown as Partial<Layout>
   return { data, layout }
 }
@@ -176,7 +168,7 @@ export default function Transect() {
         variable: v.name, shorts: v.shorts, depthMin: dmin, depthMax: dmax, nContours: settings.contourSteps,
         colorscale: pal && pal.clr.stops.length ? pal.clr.stops : null,
         range: levels ? [levels[0], levels[levels.length - 1]] : settings.rangeMode === 'auto' ? 'auto' : null,
-        colorbarName: settings.colorbarName, interpolation: settings.interpolation, oaScale: num(settings.oaScale),
+        colorbarName: settings.colorbarName,
         seafloor: samples, seafloorName: source !== 'casts' ? SOURCES[source].name : undefined,
       }),
     }
@@ -193,10 +185,10 @@ export default function Transect() {
   const map = useMemo(() => {
     if (!placed.length) return null
     const kept = viewRef.current && viewRef.current.key === placedKey ? viewRef.current : null
-    return mapFigure(placed.map(s => ({ name: s.name, color: s.color, lat: s.lat!, lon: s.lon! })), routeLine(liveStations, ordered), shownWps, kept, settings.mapStyle, settings.mapRelief)
+    return mapFigure(placed.map(s => ({ name: s.name, color: s.color, lat: s.lat!, lon: s.lon! })), routeLine(liveStations, ordered), shownWps, kept, settings.mapStyle)
   },
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  [stations, transect, settings.mapStyle, settings.mapRelief])
+  [stations, transect, settings.mapStyle])
 
   // ---- dragging waypoints on the map ----
   // Plotly's map cannot drag points, but it hands out the map underneath,
@@ -365,7 +357,7 @@ export default function Transect() {
                     <span className="adds">
                       {isFirst && liveIds.length > 1 && <button className="add" title="A point ahead of this station that carries the line on before it, dragged on the map; the section starts there. Give it a depth and it is a seafloor point as well." onClick={addBefore}>+ waypoint before</button>}
                       {nxt && <button className="add" title="Routes the line through a place you drag to on the map, so the distance runs through the water instead of straight across land. Give it a depth read off a chart and it is a seafloor point as well." onClick={() => addWaypoint(id)}>+ waypoint</button>}
-                      {isLast && liveIds.length > 1 && <button className="add" title="A point beyond this station that carries the line on past it, dragged on the map; the section ends there. Give it a depth and it is a seafloor point as well." onClick={addAfter}>+ waypoint after</button>}
+                      {isLast && liveIds.length > 1 && <button className="add" title="A point beyond this station that carries the line on past it, dragged on the map; the section ends there. Give it a depth and it is a seafloor point as well." onClick={addAfter}>+ waypoint</button>}
                     </span>
                   </div>
                   {(lead.length > 0 || after.length > 0 || parked.length > 0) && (
@@ -403,8 +395,6 @@ export default function Transect() {
           <div className="row" style={{ marginTop: 10 }}>
             <div className="field">color range{seg(settings.rangeMode, [['fixed', 'fixed'], ['auto', 'this survey']], v => setSettings({ rangeMode: v }))}</div>
             <div className="field">color bar label{seg(settings.colorbarName ? 'name' : 'units', [['units', 'units'], ['name', 'name and units']], v => setSettings({ colorbarName: v === 'name' }))}</div>
-            <div className="field" title="How the field is filled in between casts at each depth. Smooth curve: a shape-preserving cubic through the stations, never outside the two casts on either side. Objective analysis: the Gauss-Markov gridder of oceanography (Bretherton et al. 1976) with a Markov (exponential) covariance, which passes through every cast and, between stations far apart compared with the scale, eases towards the mean of the casts at that depth; a longer scale flattens that. Straight: straight lines, with kinks at the stations.">between stations{seg(settings.interpolation, [['smooth', 'smooth curve'], ['oa', 'objective analysis'], ['linear', 'straight']], v => setSettings({ interpolation: v }))}</div>
-            {settings.interpolation === 'oa' && <label className="field" title="Covariance scale of the objective analysis in km. Blank: twice the mean spacing between neighbouring stations.">scale (km)<input type="number" min="0.01" step="0.1" value={settings.oaScale} placeholder="auto" style={{ width: 80 }} onChange={e => setSettings({ oaScale: e.target.value })} /></label>}
           </div>
           <div className="row" style={{ marginTop: 10 }}>
             <div className="field" title="Where the black seafloor comes from: the casts' deepest readings and the depths you give waypoints, or surveyed bathymetry sampled along the routed line. NOAA NCEI's DEM mosaic is worldwide (coastal DEMs down to 1/9 arc-second, ETOPO 2022 at 15 arc-second elsewhere); EMODnet covers European seas at 1/16 arc-minute. A cast that went deeper than the grid keeps its own depth, and land on the line is reported.">seafloor{seg<SeafloorSource>(source, [['casts', 'casts and waypoints'], ['ncei', 'NOAA NCEI DEMs'], ['emodnet', 'EMODnet (Europe)']], v => setSettings({ seafloorSource: v }))}</div>
@@ -422,8 +412,7 @@ export default function Transect() {
               <span className="hint">{PALETTE_EXTENSIONS.join(' ')}</span>
             </label>
             <label className="field">map<input type="checkbox" className="switch" checked={settings.showMap} onChange={e => setSettings({ showMap: e.target.checked })} /></label>
-            {settings.showMap && <div className="field" title="Streets: OpenStreetMap. Ocean: Esri's Ocean Basemap, with depth shading and soundings drawn from GEBCO and NOAA charts.">map base{seg(settings.mapStyle, [['streets', 'streets'], ['ocean', 'ocean']], v => setSettings({ mapStyle: v }))}</div>}
-            {settings.showMap && <label className="field" title="Lay GEBCO's shaded bathymetric relief over the base map, at half strength">GEBCO relief<input type="checkbox" className="switch" checked={settings.mapRelief} onChange={e => setSettings({ mapRelief: e.target.checked })} /></label>}
+            {settings.showMap && <div className="field" title="Ocean: Esri's Ocean Basemap, with depth shading and soundings drawn from GEBCO and NOAA charts. Streets: OpenStreetMap.">map base{seg(settings.mapStyle, [['ocean', 'ocean'], ['streets', 'streets']], v => setSettings({ mapStyle: v }))}</div>}
             <label className="field">titles<input type="checkbox" className="switch" checked={settings.sectionTitles} onChange={e => setSettings({ sectionTitles: e.target.checked })} /></label>
             <div className="field">graphs{seg(settings.sectionGraphTheme, [['light', 'light'], ['dark', 'dark']], v => setSettings({ sectionGraphTheme: v }))}</div>
           </div>
@@ -445,13 +434,7 @@ export default function Transect() {
         {settings.showMap && map && (
           <div className={`plot-card ${settings.sectionGraphTheme}`}>
             <Plot data={map.data} layout={map.layout} filename="station_map" height={420} theme={settings.sectionGraphTheme} onReady={onMapReady} />
-            {(settings.mapStyle === 'ocean' || settings.mapRelief) && (
-              <div className="note">
-                {settings.mapStyle === 'ocean' && <a href={MAP_CREDITS.ocean.url} target="_blank" rel="noopener noreferrer">{MAP_CREDITS.ocean.text}</a>}
-                {settings.mapStyle === 'ocean' && settings.mapRelief && ' · '}
-                {settings.mapRelief && <a href={MAP_CREDITS.relief.url} target="_blank" rel="noopener noreferrer">{MAP_CREDITS.relief.text}</a>}
-              </div>
-            )}
+            {settings.mapStyle === 'ocean' && <div className="note"><a href={MAP_CREDITS.url} target="_blank" rel="noopener noreferrer">{MAP_CREDITS.text}</a></div>}
           </div>
         )}
         {chosen.length < 2 && <div className="empty">Tick at least two positioned stations to draw a section.</div>}

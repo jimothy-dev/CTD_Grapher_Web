@@ -8,6 +8,8 @@ import PlotCard from '../components/PlotCard'
 
 const num = (s: string): number | null => { const v = parseFloat(s); return Number.isFinite(v) ? v : null }
 const DEPTH = { name: 'Depth', shorts: [] as string[] }
+// bookkeeping columns and the depth channels (Depth is its own choice)
+const SKIP = new Set(['flag', 'nbin', 'scan', 'depsm', 'depfm'])
 
 export default function Profiles() {
   const stations = useStore(s => s.stations)
@@ -22,7 +24,25 @@ export default function Profiles() {
   let dmin = num(settings.depthMin), dmax = num(settings.depthMax)
   if (dmin !== null && dmax !== null && dmin > dmax) [dmin, dmax] = [dmax, dmin]
 
-  const choice = (name: string) => { const v = variables.find(v => v.name === name); return v ? { name: v.name, shorts: v.shorts } : DEPTH }
+  // every other channel the files carry (a second oxygen unit, potential
+  // temperature, conductivity, raw voltages), for the extra graphs
+  const channels = useMemo(() => {
+    const seen = new Map<string, { short: string; desc: string; units: string }>()
+    for (const s of active) for (const c of s.cast.columns) {
+      const k = c.short.toLowerCase()
+      if (SKIP.has(k) || seen.has(k)) continue
+      seen.set(k, { short: c.short, desc: c.desc, units: c.units })
+    }
+    return [...seen.values()]
+  }, [active])
+  const choice = (name: string) => {
+    if (name.startsWith('col:')) {
+      const c = channels.find(ch => ch.short.toLowerCase() === name.slice(4).toLowerCase())
+      return c ? { name: c.desc ? `${c.desc} (${c.short})` : c.short, shorts: [c.short.toLowerCase()] } : DEPTH
+    }
+    const v = variables.find(v => v.name === name)
+    return v ? { name: v.name, shorts: v.shorts } : DEPTH
+  }
   const yChoice = useMemo(() => choice(settings.yVariable),
   // eslint-disable-next-line react-hooks/exhaustive-deps
   [variables, settings.yVariable])
@@ -40,15 +60,15 @@ export default function Profiles() {
   // Custom pairs: any variable against any other, or against depth. Depth
   // reads downward as usual; a variable on Y reads upward.
   const pairs = useMemo(() => settings.customPairs.map(p => {
-    const x = variables.find(v => v.name === p.x)
-    if (!x) return null
+    const x = choice(p.x)
+    if (x === DEPTH) return null
     const y = choice(p.y)
     if (y.name === x.name) return null
     const fig = buildProfile(profileStations, { variable: x.name, shorts: x.shorts, y, yInvert: y.name === 'Depth' ? settings.yInvert : false, ...common })
     return fig ? { key: `${p.x}|${p.y}`, pair: p, fig } : null
   }).filter((p): p is NonNullable<typeof p> => p !== null),
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  [profileStations, variables, settings.customPairs, dmin, dmax, settings.lineShape, settings.legendPos, settings.yInvert, settings.yLabelMode, settings.profileGrid])
+  [profileStations, variables, channels, settings.customPairs, dmin, dmax, settings.lineShape, settings.legendPos, settings.yInvert, settings.yLabelMode, settings.profileGrid])
 
   if (!active.length) return <div className="empty">No active stations. <Link to="/">Add or switch some on.</Link></div>
 
@@ -106,20 +126,22 @@ export default function Profiles() {
         <label className="field">graphs per row<input type="number" min={1} max={4} step={1} value={perRow} style={{ width: 64 }} aria-label="Graphs per row, 1 to 4" onChange={e => { const v = parseInt(e.target.value, 10); if (v >= 1 && v <= 4) setSettings({ graphsPerRow: v }) }} /></label>
         <div className="field">graphs{seg(settings.profileGraphTheme, [['light', 'light'], ['dark', 'dark']], v => setSettings({ profileGraphTheme: v }))}</div>
       </div>
-      <div className="card controls" title="Any variable against any other, or against depth, added as an extra graph">
+      <div className="card controls" title="Any variable or channel in the files against any other, or against depth, added as an extra graph">
         <span className="small muted" style={{ alignSelf: 'center' }}>extra graph:</span>
         <label className="field">x
           <select value={xDefault} onChange={e => setPairX(e.target.value)}>
             {variables.map(v => <option key={v.name} value={v.name}>{v.name}</option>)}
+            {channels.length > 0 && <optgroup label="other channels in the files">{channels.map(c => <option key={c.short} value={`col:${c.short}`}>{c.desc || c.short}{c.units ? ` [${c.units}]` : ''} · {c.short}</option>)}</optgroup>}
           </select>
         </label>
         <label className="field">y
           <select value={pairY} onChange={e => setPairY(e.target.value)}>
             <option value="depth">Depth</option>
             {variables.map(v => <option key={v.name} value={v.name}>{v.name}</option>)}
+            {channels.length > 0 && <optgroup label="other channels in the files">{channels.map(c => <option key={c.short} value={`col:${c.short}`}>{c.desc || c.short}{c.units ? ` [${c.units}]` : ''} · {c.short}</option>)}</optgroup>}
           </select>
         </label>
-        <button className="btn" onClick={addPair} disabled={!xDefault || choice(pairY).name === xDefault}>add graph</button>
+        <button className="btn" onClick={addPair} disabled={!xDefault || choice(pairY).name === choice(xDefault).name}>add graph</button>
         {pairs.length > 0 && <span className="small muted">{pairs.length} extra</span>}
       </div>
       {figures.length === 0 && pairs.length === 0 && <div className="empty">Nothing to draw. Tick a variable, or widen the depth window.</div>}

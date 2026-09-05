@@ -43,7 +43,7 @@ export default function Layout() {
         </nav>
       </header>
       <main className="content"><Outlet /></main>
-      <footer className="foot"><Link to="/about">About</Link></footer>
+      <footer className="foot"><Link to="/about">About</Link> · <Link to="/feedback">Feedback</Link></footer>
     </div>
   )
 }
