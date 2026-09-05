@@ -5,6 +5,7 @@
   --ink: #1c2733;
   --muted: #5f6d78;
   --rule: #e0d8c8;
+  --seg-line: #b9b1a3;      /* separator inside button groups */
   --accent: #1f6f8b;
   --accent-soft: #e2eff4;
   --accent-ink: #ffffff;
@@ -19,13 +20,13 @@
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --ground: #0f151a; --surface: #172028; --surface-2: #1e2933; --ink: #e6ecef; --muted: #98a5ae; --rule: #2a3540;
+    --ground: #0f151a; --surface: #172028; --surface-2: #1e2933; --ink: #e6ecef; --muted: #98a5ae; --rule: #2a3540; --seg-line: #4a5966;
     --accent: #6fb7d6; --accent-soft: #1d3340; --accent-ink: #0f151a; --danger: #ef8a83; --ok: #7bc596; --plot-grid: #26313b;
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 16px rgba(0, 0, 0, 0.3);
   }
 }
 :root[data-theme="dark"] {
-  --ground: #0f151a; --surface: #172028; --surface-2: #1e2933; --ink: #e6ecef; --muted: #98a5ae; --rule: #2a3540;
+  --ground: #0f151a; --surface: #172028; --surface-2: #1e2933; --ink: #e6ecef; --muted: #98a5ae; --rule: #2a3540; --seg-line: #4a5966;
   --accent: #6fb7d6; --accent-soft: #1d3340; --accent-ink: #0f151a; --danger: #ef8a83; --ok: #7bc596; --plot-grid: #26313b;
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 16px rgba(0, 0, 0, 0.3);
 }
@@ -107,9 +108,10 @@ a.btn { text-decoration: none; }
 .seg { display: inline-flex; flex-wrap: wrap; max-width: 100%; border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; }
 .seg button { border: 0; background: var(--surface); padding: 6px 12px; cursor: pointer; font-size: 13px; color: var(--muted); white-space: nowrap; flex: 1 1 auto; }
 .seg button.on { background: var(--accent-soft); color: var(--accent); font-weight: 500; }
-.seg button + button { border-left: 1px solid var(--rule); }     /* a line between the buttons of a group */
-.plot-card.light .seg button + button { border-left-color: #d9e0dd; }
-.plot-card.dark .seg button + button { border-left-color: #2a3540; }
+/* a visible line between the buttons of a group: darker than the card rules, which vanish against the white buttons */
+.seg button + button { border-left: 1px solid var(--seg-line); }
+.plot-card.light .seg button + button { border-left-color: #b9b1a3; }
+.plot-card.dark .seg button + button { border-left-color: #4a5966; }
 .field input.label-box { width: 150px; font-size: 13px; padding: 5px 8px; }
 .field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); min-width: 0; max-width: 100%; }
 .field input, .field select { padding: 7px 9px; border: 1px solid var(--rule); border-radius: 8px; background: var(--ground); color: var(--ink); font-size: 14px; min-width: 0; }
