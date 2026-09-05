@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } f
 import { Link } from 'react-router-dom'
 import Plotly from 'plotly.js-dist-min'
 import type { PlotData, Layout, PlotlyHTMLElement } from 'plotly.js'
-import { useStore, BEFORE, type Mid, type Waypoint, type SeafloorSource } from '../store'
+import { useStore, BEFORE, type Waypoint, type SeafloorSource } from '../store'
 import { availableVariables } from '../lib/cnv'
 import { buildSection, routeDistances, type SectionStation, type RoutePoint } from '../lib/section'
 import { fetchSeafloor, forgetSeafloor, routeKey, SOURCES, type SeafloorResult } from '../lib/bathymetry'
@@ -91,7 +91,7 @@ export default function Transect() {
   const stations = useStore(s => s.stations)
   const transect = useStore(s => s.transect)
   const settings = useStore(s => s.settings)
-  const { setTransect, moveInOrder, setSettings } = useStore()
+  const { setTransect, moveInOrder, autoOrder, setSettings } = useStore()
   const byId = useMemo(() => Object.fromEntries(stations.map(s => [s.id, s])), [stations])
   const active = useMemo(() => stations.filter(s => s.active), [stations])
   const variables = useMemo(() => availableVariables(active.map(s => s.cast)), [active])
@@ -112,7 +112,6 @@ export default function Transect() {
     const s = byId[id]
     return {
       id, label: transect.labels[id]?.trim() || s.name, color: s.color, lat: s.lat!, lon: s.lon!, cast: s.cast,
-      mids: (transect.mids[id] ?? []).filter(m => m.d !== null && m.z !== null).map(m => ({ d: m.d!, z: m.z!, to: m.to })),
       route: ordered[i].route.map(asPoint), lead: ordered[i].lead.map(asPoint),
     }
   })
@@ -157,7 +156,7 @@ export default function Transect() {
         variable: v.name, shorts: v.shorts, depthMin: dmin, depthMax: dmax, nContours: settings.contourSteps,
         colorscale: pal && pal.clr.stops.length ? pal.clr.stops : null,
         range: levels ? [levels[0], levels[levels.length - 1]] : settings.rangeMode === 'auto' ? 'auto' : null,
-        colorbarName: settings.colorbarName, interpolation: settings.interpolation,
+        colorbarName: settings.colorbarName, interpolation: settings.interpolation, oaScale: num(settings.oaScale),
         seafloor: samples, seafloorName: source !== 'casts' ? SOURCES[source].name : undefined,
       }),
     }
@@ -249,12 +248,6 @@ export default function Transect() {
     e.target.value = ''
   }
   const dropPalette = (key: string) => { const p = { ...settings.palettes }; delete p[key]; setSettings({ palettes: p }) }
-  const setMid = (id: string, j: number, key: 'd' | 'z', value: string) => {
-    const mids: Mid[] = (transect.mids[id] ?? []).map(m => ({ ...m }))
-    mids[j][key] = num(value)
-    setTransect({ mids: { ...transect.mids, [id]: mids } })
-  }
-  const addMid = (id: string, to: string | null) => setTransect({ mids: { ...transect.mids, [id]: [...(transect.mids[id] ?? []), { d: null, z: null, to }] } })
   const newWaypoint = (after: string, at: LatLon): Waypoint => ({ id: `w${Date.now().toString(36)}${Math.floor(Math.random() * 1e4)}`, after, lat: at.lat, lon: at.lon, depth: null })
   const pushWaypoint = (w: Waypoint) => setTransect({ waypoints: [...transect.waypoints, w] })
   // a new waypoint between stations starts halfway to the next one, so it is visible at once
@@ -309,15 +302,17 @@ export default function Transect() {
       <div className="stack">
         <div>
           <h1>Transect</h1>
-          <p className="muted small">Drag stations into the order they lie along the line. Untick any not on it.</p>
+          <p className="muted small">Stations are ordered along the line from the most north-western one, nearest next; drag to change. Untick any not on it.</p>
         </div>
         <div className="card">
-          <h2>Stations on the line</h2>
+          <div className="row" style={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
+            <h2>Stations on the line</h2>
+            {transect.arranged && <button className="btn quiet tiny" title="Back to the automatic order: start at the most north-western station and go to the nearest station not yet visited each time" onClick={autoOrder}>auto order</button>}
+          </div>
           <div className="order">
             {orderIds.map((id, i) => {
               const s = byId[id]
               const placedHere = s.lat !== null && s.lon !== null
-              const mids = transect.mids[id] ?? []
               const isLive = live(id)
               const li = liveIds.indexOf(id)
               const nxt = isLive ? nextLiveOf(id) : null
@@ -349,25 +344,14 @@ export default function Transect() {
                     </label>
                     <span className="adds">
                       {isFirst && liveIds.length > 1 && <button className="add" title="A point ahead of this station that carries the line on before it, dragged on the map; the section starts there. Give it a depth and it is a seafloor point as well." onClick={addBefore}>+ waypoint before</button>}
-                      {nxt && <button className="add" title="A seafloor depth in metres known between this station and the next, read off a chart. Shapes the seafloor; the color between stations stretches down to meet it." onClick={() => addMid(id, nxt)}>+ point after</button>}
-                      {nxt && <button className="add" title="Routes the line through a place you drag to on the map, so the distance runs through the water instead of straight across land. Give it a depth and it is a seafloor point as well." onClick={() => addWaypoint(id)}>+ waypoint</button>}
+                      {nxt && <button className="add" title="Routes the line through a place you drag to on the map, so the distance runs through the water instead of straight across land. Give it a depth read off a chart and it is a seafloor point as well." onClick={() => addWaypoint(id)}>+ waypoint</button>}
                       {isLast && liveIds.length > 1 && <button className="add" title="A point beyond this station that carries the line on past it, dragged on the map; the section ends there. Give it a depth and it is a seafloor point as well." onClick={addAfter}>+ waypoint after</button>}
                     </span>
                   </div>
-                  {(mids.length > 0 || lead.length > 0 || after.length > 0 || parked.length > 0) && (
+                  {(lead.length > 0 || after.length > 0 || parked.length > 0) && (
                     <div className="mids">
                       {parked.map((w, j) => wpRow(w, `waypoint ${j + 1} after ${label}, off the map while the station is off the line`))}
                       {lead.map((w, j) => wpRow(w, `waypoint ${j + 1} before ${label}`))}
-                      {mids.map((m, j) => (
-                        <div key={j} className="mid">
-                          <span className="to">↳ towards {nameOf(m.to)}</span>
-                          <span className="vals">
-                            <input type="number" step="0.01" min="0" placeholder="km" value={m.d ?? ''} onChange={e => setMid(id, j, 'd', e.target.value)} aria-label="km from this station" /> km,
-                            <input type="number" step="0.1" min="0" placeholder="m" value={m.z ?? ''} onChange={e => setMid(id, j, 'z', e.target.value)} aria-label="depth in metres" /> m deep
-                            <button className="x" title="remove" onClick={() => setTransect({ mids: { ...transect.mids, [id]: mids.filter((_, k) => k !== j) } })}>×</button>
-                          </span>
-                        </div>
-                      ))}
                       {after.map((w, j) => wpRow(w, nxt ? `waypoint ${j + 1} on the way to ${nameOf(nxt)}` : `waypoint ${j + 1} beyond ${label}`))}
                     </div>
                   )}
@@ -399,10 +383,11 @@ export default function Transect() {
           <div className="row" style={{ marginTop: 10 }}>
             <div className="field">color range{seg(settings.rangeMode, [['fixed', 'fixed'], ['auto', 'this survey']], v => setSettings({ rangeMode: v }))}</div>
             <div className="field">color bar label{seg(settings.colorbarName ? 'name' : 'units', [['units', 'units'], ['name', 'name and units']], v => setSettings({ colorbarName: v === 'name' }))}</div>
-            <div className="field" title="How the field is filled in between casts at each depth. Smooth draws a shape-preserving curve through the stations, the look of Surfer's and ODV's gridders, and never overshoots the neighbouring casts; straight joins them with straight lines, which shows kinks at the stations.">between stations{seg(settings.interpolation, [['smooth', 'smooth'], ['linear', 'straight']], v => setSettings({ interpolation: v }))}</div>
+            <div className="field" title="How the field is filled in between casts at each depth. Smooth curve: a shape-preserving cubic through the stations, never outside the two casts on either side. Objective analysis: the Gauss-Markov gridder of oceanography (Bretherton et al. 1976) with a Markov (exponential) covariance, which passes through every cast and, between stations far apart compared with the scale, eases towards the mean of the casts at that depth; a longer scale flattens that. Straight: straight lines, with kinks at the stations.">between stations{seg(settings.interpolation, [['smooth', 'smooth curve'], ['oa', 'objective analysis'], ['linear', 'straight']], v => setSettings({ interpolation: v }))}</div>
+            {settings.interpolation === 'oa' && <label className="field" title="Covariance scale of the objective analysis in km. Blank: twice the mean spacing between neighbouring stations.">scale (km)<input type="number" min="0.01" step="0.1" value={settings.oaScale} placeholder="auto" style={{ width: 80 }} onChange={e => setSettings({ oaScale: e.target.value })} /></label>}
           </div>
           <div className="row" style={{ marginTop: 10 }}>
-            <div className="field" title="Where the black seafloor comes from: the casts' deepest readings and the points you add, or surveyed bathymetry sampled along the routed line. NOAA NCEI's DEM mosaic is worldwide (coastal DEMs down to 1/9 arc-second, ETOPO 2022 at 15 arc-second elsewhere); EMODnet covers European seas at 1/16 arc-minute. A cast that went deeper than the grid keeps its own depth, and land on the line is reported.">seafloor{seg<SeafloorSource>(source, [['casts', 'casts and my points'], ['ncei', 'NOAA NCEI DEMs'], ['emodnet', 'EMODnet (Europe)']], v => setSettings({ seafloorSource: v }))}</div>
+            <div className="field" title="Where the black seafloor comes from: the casts' deepest readings and the depths you give waypoints, or surveyed bathymetry sampled along the routed line. NOAA NCEI's DEM mosaic is worldwide (coastal DEMs down to 1/9 arc-second, ETOPO 2022 at 15 arc-second elsewhere); EMODnet covers European seas at 1/16 arc-minute. A cast that went deeper than the grid keeps its own depth, and land on the line is reported.">seafloor{seg<SeafloorSource>(source, [['casts', 'casts and waypoints'], ['ncei', 'NOAA NCEI DEMs'], ['emodnet', 'EMODnet (Europe)']], v => setSettings({ seafloorSource: v }))}</div>
             {floorStatus}
           </div>
           <div className="row" style={{ marginTop: 10 }}>

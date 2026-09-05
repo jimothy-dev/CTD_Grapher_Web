@@ -19,8 +19,6 @@ export interface SectionStation {
   lat: number
   lon: number
   cast: Cast
-  // seafloor points: km from here towards the station `to` (its id; null means the next one), depth m
-  mids: { d: number; z: number; to: string | null }[]
   // waypoints from this station on: towards the next station, or, for the
   // last station, out beyond the end of the line. A depth makes one a
   // seafloor point at its place on the route.
@@ -66,7 +64,8 @@ export interface SectionOptions {
   range?: [number, number] | 'auto' | null
   grid?: [number, number]
   colorbarName?: boolean     // "Temperature (°C)" on the colour bar rather than "°C"
-  interpolation?: 'linear' | 'smooth'
+  interpolation?: 'smooth' | 'oa' | 'linear'
+  oaScale?: number | null      // objective analysis covariance scale in km; null or 0 means twice the mean station spacing
   // surveyed seafloor along the route: distance and elevation (m above sea
   // level, negative under water, null where the source has nothing)
   seafloor?: { x: number; elevation: number | null }[] | null
@@ -148,6 +147,51 @@ function pchipSlopes(x: number[], y: number[]): number[] {
   return d
 }
 
+// Objective analysis (Gauss-Markov optimal interpolation, Bretherton, Davis
+// and Fandry 1976), the gridder of the oceanographic literature, applied
+// along the line at every depth. Each station's departure from the mean at
+// that depth is weighted through a Markov (exponential) covariance with scale
+// L. The exponential form was chosen over the Gaussian one after measuring
+// both: with a Gaussian the field rang by up to a salinity unit between two
+// casts that agreed, and two close stations were averaged; the Markov form
+// never overshoots between neighbours. The tiny noise term only keeps the
+// solve well posed, so the field passes through every cast; between stations
+// far apart compared with L it eases towards that depth's mean, which a
+// longer L flattens. The station covariance is factorised once, so a depth
+// level costs a few multiplies.
+function gaussMarkov(xp: number[], xs: number[], L: number, eps: number): (vals: number[]) => number[] {
+  const n = xp.length
+  const cov = (a: number, b: number) => Math.exp(-Math.abs(a - b) / L)
+  const lu = luFactor(xp.map((a, i) => xp.map((b, j) => cov(a, b) + (i === j ? eps : 0))))
+  const G = xs.map(x => { const xc = Math.min(Math.max(x, xp[0]), xp[n - 1]); return xp.map(b => cov(xc, b)) })   // held constant past the ends
+  return vals => {
+    const mean = vals.reduce((s, v) => s + v, 0) / n
+    const alpha = luSolve(lu, vals.map(v => v - mean))
+    return G.map(g => { let s = mean; for (let j = 0; j < n; j++) s += g[j] * alpha[j]; return s })
+  }
+}
+function luFactor(a: number[][]): { lu: number[][]; piv: number[] } {
+  const n = a.length, lu = a.map(r => [...r]), piv = Array.from({ length: n }, (_, i) => i)
+  for (let k = 0; k < n; k++) {
+    let p = k
+    for (let i = k + 1; i < n; i++) if (Math.abs(lu[i][k]) > Math.abs(lu[p][k])) p = i
+    if (p !== k) { [lu[k], lu[p]] = [lu[p], lu[k]]; [piv[k], piv[p]] = [piv[p], piv[k]] }
+    const d = lu[k][k] || 1e-12
+    for (let i = k + 1; i < n; i++) {
+      const f = lu[i][k] / d
+      lu[i][k] = f
+      for (let j = k + 1; j < n; j++) lu[i][j] -= f * lu[k][j]
+    }
+  }
+  return { lu, piv }
+}
+function luSolve({ lu, piv }: { lu: number[][]; piv: number[] }, b: number[]): number[] {
+  const n = lu.length, y = piv.map(i => b[i])
+  for (let i = 1; i < n; i++) for (let j = 0; j < i; j++) y[i] -= lu[i][j] * y[j]
+  for (let i = n - 1; i >= 0; i--) { for (let j = i + 1; j < n; j++) y[i] -= lu[i][j] * y[j]; y[i] /= lu[i][i] || 1e-12 }
+  return y
+}
+
 // Segment index and position of each grid x along the stations, computed once.
 function segments(xp: number[], xs: number[]): { k: number; t: number; h: number }[] {
   return xs.map(x => {
@@ -197,30 +241,11 @@ export function buildSection(stations: SectionStation[], opts: SectionOptions): 
   if (windowed.some(w => !w.z.length)) return null
   const bottoms = windowed.map(w => w.z[w.z.length - 1])
 
-  // Seafloor from what the survey knows: cast bottoms, typed points and
-  // waypoint depths. A typed point belongs to the stretch between its station
-  // and the neighbour it was measured towards.
+  // Seafloor from what the survey knows: the casts' deepest readings and the
+  // depths given to waypoints.
   const own: [number, number][] = dist.map((x, i) => [x, bottoms[i]])
   let used = 0
   for (const p of waypointPts) { own.push(p); used++ }
-  const labelOf = (id: string | null) => (id === null ? null : stations.find(t => t.id === id)?.label ?? null)
-  stations.forEach((s, i) => {
-    for (const m of s.mids) {
-      const { d, z } = m
-      if (!(d > 0)) { notes.push(`${s.label}: point at ${d} km skipped, it must be more than 0 km from the station`); continue }
-      if (!(z > 0)) { notes.push(`${s.label}: point at ${d} km skipped, depth must be above 0 m`); continue }
-      if (m.to === null && i === last) { notes.push(`${s.label}: points after the last station are not used`); continue }
-      const j = m.to === null ? i + 1 : stations.findIndex(t => t.id === m.to)
-      if (j !== i + 1 && j !== i - 1) {
-        notes.push(`${s.label}: point towards ${labelOf(m.to) ?? 'a station not on the line'} skipped, they are no longer next to each other`)
-        continue
-      }
-      const seg = Math.abs(dist[j] - dist[i])
-      if (d >= seg) { notes.push(`${s.label}: point at ${d} km skipped, ${stations[j].label} is only ${seg.toFixed(2)} km away`); continue }
-      own.push([j > i ? dist[i] + d : dist[i] - d, z])
-      used++
-    }
-  })
 
   // Surveyed bathymetry along the route replaces the straight joins. A cast
   // or point that is deeper than the grid says stays: the grid cell may be
@@ -241,7 +266,7 @@ export function buildSection(stations: SectionStation[], opts: SectionOptions): 
       while (lo < hi) { const mid = (lo + hi) >> 1; if (bx[mid] < x) lo = mid + 1; else hi = mid }
       return Math.abs(bx[lo] - x) <= near || (lo > 0 && Math.abs(bx[lo - 1] - x) <= near)
     }
-    // where the survey has no data the casts and typed points stand in; where it has, only a deeper one is kept
+    // where the survey has no data the casts and waypoint depths stand in; where it has, only a deeper one is kept
     const inGaps = own.filter(([x]) => !covered(x))
     const deeper = own.filter(([x, z]) => covered(x) && z > interp1(bx, bz, x) + 0.5)
     floorPts = [...bathy, ...inGaps, ...deeper]
@@ -257,12 +282,12 @@ export function buildSection(stations: SectionStation[], opts: SectionOptions): 
     }
     notes.push(`seafloor from ${name} (${valid.length} samples)${deeper.length ? `; ${deeper.length} cast bottom${deeper.length === 1 ? '' : 's'} or point${deeper.length === 1 ? '' : 's'} deeper than the grid kept` : ''}`)
     const gaps = runs(s => s.elevation === null)
-    if (gaps.length) notes.push(`${name} has no data at ${gaps.map(span).join(', ')} km, so the seafloor there comes from the casts and your points`)
+    if (gaps.length) notes.push(`${name} has no data at ${gaps.map(span).join(', ')} km, so the seafloor there comes from the casts and waypoint depths`)
     const land = runs(s => s.elevation !== null && s.elevation >= 0)
     if (land.length) warnings.push(`${name} shows land at ${land.map(span).join(', ')} km along the line, drawn up to the surface; drag a waypoint to keep the line in the water`)
     used = 0
   } else {
-    if (all) notes.push(`${opts.seafloorName ?? 'bathymetry'}: no data along this line, so the seafloor comes from the casts and your points`)
+    if (all) notes.push(`${opts.seafloorName ?? 'bathymetry'}: no data along this line, so the seafloor comes from the casts and waypoint depths`)
     floorPts = own
   }
   floorPts.sort((a, b) => a[0] - b[0] || b[1] - a[1])
@@ -282,13 +307,19 @@ export function buildSection(stations: SectionStation[], opts: SectionOptions): 
   const columns = windowed.map(w => resample(w.z, w.v, ys))
   // horizontal pass at every depth, held constant past the end stations
   // when the section is extended
-  const smooth = (opts.interpolation ?? 'smooth') === 'smooth' && stations.length > 2
+  const method = opts.interpolation ?? 'smooth'
+  const smooth = method === 'smooth' && stations.length > 2
+  const spacing = Math.max((dist[last] - dist[0]) / last, 0.01)          // mean spacing between neighbouring stations
+  const scale = opts.oaScale && opts.oaScale > 0 ? opts.oaScale : 2 * spacing
+  const oa = method === 'oa' ? gaussMarkov(dist, xs, scale, 1e-4) : null
+  if (oa) notes.push(`objective analysis, Markov covariance, scale ${scale >= 1 ? `${scale.toFixed(1)} km` : `${Math.round(scale * 1000)} m`}${opts.oaScale && opts.oaScale > 0 ? '' : ' (twice the mean station spacing)'}`)
   const segs = segments(dist, xs)
   const z: number[][] = []
   for (let j = 0; j < ny; j++) {
     const vals = columns.map(c => c[j])
-    const row = new Array<number>(nx)
-    if (smooth) {
+    let row = new Array<number>(nx)
+    if (oa) row = oa(vals)
+    else if (smooth) {
       const d = pchipSlopes(dist, vals)
       for (let i = 0; i < nx; i++) {
         const { k, t, h } = segs[i]
@@ -371,6 +402,6 @@ export function buildSection(stations: SectionStation[], opts: SectionOptions): 
     dragmode: false, hovermode: 'closest',
     modebar: { remove: ['zoom2d', 'pan2d', 'select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'resetScale2d'] },
   }
-  if (used) notes.unshift(`${used} seafloor point${used === 1 ? '' : 's'} used`)
+  if (used) notes.unshift(`${used} waypoint depth${used === 1 ? '' : 's'} on the seafloor`)
   return { data, layout, distances: dist, units, notes, warnings, used, autoTitle: `${opts.variable} section` }
 }

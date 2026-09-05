@@ -242,6 +242,40 @@ export function positionFromColumns(cast: Cast): [number, number] | null {
   return [lat, lon]
 }
 
+// Ranges a real cast stays inside almost everywhere (salinity to 60 allows
+// hypersaline lagoons). Every channel of a kind is checked, secondary sensors
+// included, because a broken conductivity cell or an unprocessed file can
+// put salinity at 1999 with no parse error at all; more than a hundredth of
+// the rows outside is called out.
+const RANGES: { name: string; shorts: string[]; lo: number; hi: number }[] = [
+  { name: 'Temperature', shorts: VARIABLES[0].shorts, lo: -3, hi: 45 },
+  { name: 'Salinity', shorts: VARIABLES[1].shorts, lo: 0, hi: 60 },
+  { name: 'Density (sigma-t)', shorts: VARIABLES[2].shorts, lo: -5, hi: 60 },
+  { name: 'Dissolved Oxygen (mg/L)', shorts: ['sbeox0mg/l', 'sbeox1mg/l'], lo: -0.5, hi: 25 },
+  { name: 'Dissolved Oxygen (mL/L)', shorts: ['sbeox0ml/l', 'sbeox1ml/l', 'oxml/l'], lo: -0.5, hi: 18 },
+  { name: 'Dissolved Oxygen (% sat)', shorts: ['sbeox0ps', 'sbeox1ps'], lo: -1, hi: 250 },
+  { name: 'pH', shorts: ['ph'], lo: 5, hi: 10 },
+]
+export function suspiciousChannels(cast: Cast): string[] {
+  const out: string[] = []
+  const fmt = (v: number) => (Math.abs(v) >= 100 ? v.toFixed(0) : v.toFixed(2))
+  for (const r of RANGES) {
+    for (const col of cast.columns.filter(c => r.shorts.includes(c.short.toLowerCase()))) {
+      let n = 0, bad = 0, lo = Infinity, hi = -Infinity
+      for (const x of cast.data[col.index]) {
+        if (!Number.isFinite(x)) continue
+        n++
+        if (x < lo) lo = x
+        if (x > hi) hi = x
+        if (x < r.lo || x > r.hi) bad++
+      }
+      if (n < 5 || bad / n <= 0.01) continue
+      out.push(`${r.name} (${col.short}) runs ${fmt(lo)} to ${fmt(hi)}, ${Math.round(100 * bad / n)}% of rows outside ${r.lo} to ${r.hi}`)
+    }
+  }
+  return out
+}
+
 export function deepest(cast: Cast): number | null {
   const d = depthColumn(cast)
   if (!d) return null

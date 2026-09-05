@@ -6,7 +6,7 @@ const EXAMPLE_BASE = 'https://raw.githubusercontent.com/jimothy-dev/CTD_Grapher_
 const EXAMPLES = ['Station_11.cnv', 'Station_12.cnv', 'Station_15.cnv', 'Station_16.cnv', 'Station_17.cnv']
 // casts from other instruments and places, shipped with the app (see public/samples/SOURCES.md)
 const SAMPLE_BASE = `${import.meta.env.BASE_URL}samples/`
-const SAMPLES = ['NCEI_GulfOfMexico_2010_SBE9.cnv', 'OOI_Pioneer_2015_SBE9.cnv', 'NorthSea_2017_SBE25plus.cnv', 'Nansen_2008_SBE9.cnv', 'Hakai_Quadra_2024_SBE19plus.cnv']
+const SAMPLES = ['NCEI_GulfOfMexico_2010_SBE9.cnv', 'OOI_Pioneer_2015_SBE9.cnv', 'Nansen_2008_SBE9.cnv', 'Hakai_Quadra_2024_SBE19plus.cnv']
 
 export default function Stations() {
   const stations = useStore(s => s.stations)

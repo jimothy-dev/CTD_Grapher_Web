@@ -82,6 +82,23 @@ export default function Plot({ data, layout, filename = 'chart', height = 520, t
     Plotly.relayout(el, update as unknown as Partial<Layout>).catch(() => { /* figure gone or mid-draw */ })
   }, [theme])
 
+  // Plotly only listens for window resizes; a card that changes width when
+  // the graphs-per-row setting changes needs telling.
+  useEffect(() => {
+    const el = ref.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    let last = { w: el.clientWidth, h: el.clientHeight }, raf = 0
+    const ro = new ResizeObserver(() => {
+      const w = el.clientWidth, h = el.clientHeight
+      if (!w || (w === last.w && h === last.h)) return
+      last = { w, h }
+      cancelAnimationFrame(raf)
+      raf = requestAnimationFrame(() => { if ((el as unknown as { _fullLayout?: unknown })._fullLayout) void Plotly.Plots.resize(el) })
+    })
+    ro.observe(el)
+    return () => { ro.disconnect(); cancelAnimationFrame(raf) }
+  }, [])
+
   useEffect(() => {
     const el = ref.current
     return () => { if (el) Plotly.purge(el) }

@@ -89,13 +89,13 @@ export default function Profiles() {
         ))}
       </div>
       <div className="card controls">
-        <label className="field">y axis
+        <label className="field">y variable
           <select value={settings.yVariable} onChange={e => setSettings({ yVariable: e.target.value, yInvert: e.target.value === 'depth' ? true : settings.yInvert })}>
             <option value="depth">Depth</option>
             {variables.map(v => <option key={v.name} value={v.name}>{v.name}</option>)}
           </select>
         </label>
-        <div className="field">y direction{seg(settings.yInvert ? 'down' : 'up', [['down', 'largest at bottom'], ['up', 'largest at top']], v => setSettings({ yInvert: v === 'down' }))}</div>
+        <div className="field" title="Inverted: the y axis grows down the page, the usual way to draw depth. Not inverted: the largest value at the top.">y axis{seg(settings.yInvert ? 'down' : 'up', [['down', 'inverted'], ['up', 'not inverted']], v => setSettings({ yInvert: v === 'down' }))}</div>
         <div className="field">y label{seg(settings.yLabelMode, [['side', 'along the axis'], ['top', 'top']], v => setSettings({ yLabelMode: v }))}</div>
         <div className="field">legend{seg<LegendPos>(settings.legendPos, [['left', 'left'], ['right', 'right'], ['bottom', 'bottom']], v => setSettings({ legendPos: v }))}</div>
         <div className="field">line{seg(settings.lineShape, [['spline', 'smooth'], ['linear', 'raw']], v => setSettings({ lineShape: v }))}</div>
