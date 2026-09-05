@@ -48,10 +48,30 @@ function carryOn(from: LatLon, towards: LatLon | null): LatLon {
   return { lat: +(from.lat + 0.25 * (from.lat - towards.lat)).toFixed(5), lon: +(from.lon + 0.25 * (from.lon - towards.lon)).toFixed(5) }
 }
 
+// Base maps and overlays as raster tile layers under the traces. Esri's Ocean
+// Basemap shades depth (GEBCO-derived) and is free to use with attribution;
+// GEBCO's own WMS serves shaded-relief tiles in web mercator.
+const ESRI_OCEAN = 'https://services.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}'
+const ESRI_OCEAN_REF = 'https://services.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Reference/MapServer/tile/{z}/{y}/{x}'
+const GEBCO_WMS = 'https://wms.gebco.net/mapserv?request=getmap&service=wms&version=1.3.0&crs=EPSG:3857&layers=GEBCO_LATEST&styles=&format=image/png&transparent=true&width=256&height=256&bbox={bbox-epsg-3857}'
+export const MAP_CREDITS = {
+  ocean: { text: 'Ocean base map: Esri, GEBCO, NOAA, National Geographic, DeLorme, HERE, Geonames.org and other contributors', url: 'https://www.arcgis.com/home/item.html?id=1e126e7520f9466c9ca28b8f28b5e500' },
+  relief: { text: 'Relief: imagery reproduced from the GEBCO_2026 Grid, GEBCO Compilation Group (2026) GEBCO 2026 Grid (doi:10.5285/4f68d5c7-45eb-f999-e063-7086abc036fa)', url: 'https://www.gebco.net/data-products/gridded-bathymetry-data' },
+}
+type MapStyle = 'streets' | 'ocean'
+type RasterLayer = { sourcetype: 'raster'; source: string[]; below: 'traces'; opacity?: number }
+function mapLayers(style: MapStyle, relief: boolean): RasterLayer[] {
+  const layers: RasterLayer[] = []
+  if (style === 'ocean') layers.push({ sourcetype: 'raster', source: [ESRI_OCEAN], below: 'traces' })
+  if (relief) layers.push({ sourcetype: 'raster', source: [GEBCO_WMS], below: 'traces', opacity: 0.55 })
+  if (style === 'ocean') layers.push({ sourcetype: 'raster', source: [ESRI_OCEAN_REF], below: 'traces' })
+  return layers
+}
+
 // Map traces: 0 the routed line, 1 the waypoints, then one per station. The
 // first two keep their slots even when empty, so a drag can restyle them.
 type MapView = { center: { lat: number; lon: number }; zoom: number }
-function mapFigure(stations: { name: string; color: string; lat: number; lon: number }[], line: LatLon[], waypoints: Waypoint[], view: MapView | null): { data: Partial<PlotData>[]; layout: Partial<Layout> } {
+function mapFigure(stations: { name: string; color: string; lat: number; lon: number }[], line: LatLon[], waypoints: Waypoint[], view: MapView | null, style: MapStyle, relief: boolean): { data: Partial<PlotData>[]; layout: Partial<Layout> } {
   const lats = stations.map(s => s.lat), lons = stations.map(s => s.lon)
   const midLat = lats.reduce((a, b) => a + b, 0) / lats.length
   const midLon = lons.reduce((a, b) => a + b, 0) / lons.length
@@ -71,7 +91,7 @@ function mapFigure(stations: { name: string; color: string; lat: number; lon: nu
   // so a redraw for a moved waypoint or a typed label does not jump the view
   const layout = {
     margin: { l: 0, r: 0, t: 0, b: 0 }, legend: { title: { text: 'Station' } }, uirevision: 'map',
-    map: { style: 'open-street-map', center: view?.center ?? { lat: midLat, lon: midLon }, zoom: view?.zoom ?? autoZoom },
+    map: { style: style === 'ocean' ? 'white-bg' : 'open-street-map', center: view?.center ?? { lat: midLat, lon: midLon }, zoom: view?.zoom ?? autoZoom, layers: mapLayers(style, relief) },
   } as unknown as Partial<Layout>
   return { data, layout }
 }
@@ -173,10 +193,10 @@ export default function Transect() {
   const map = useMemo(() => {
     if (!placed.length) return null
     const kept = viewRef.current && viewRef.current.key === placedKey ? viewRef.current : null
-    return mapFigure(placed.map(s => ({ name: s.name, color: s.color, lat: s.lat!, lon: s.lon! })), routeLine(liveStations, ordered), shownWps, kept)
+    return mapFigure(placed.map(s => ({ name: s.name, color: s.color, lat: s.lat!, lon: s.lon! })), routeLine(liveStations, ordered), shownWps, kept, settings.mapStyle, settings.mapRelief)
   },
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  [stations, transect])
+  [stations, transect, settings.mapStyle, settings.mapRelief])
 
   // ---- dragging waypoints on the map ----
   // Plotly's map cannot drag points, but it hands out the map underneath,
@@ -402,6 +422,8 @@ export default function Transect() {
               <span className="hint">{PALETTE_EXTENSIONS.join(' ')}</span>
             </label>
             <label className="field">map<input type="checkbox" className="switch" checked={settings.showMap} onChange={e => setSettings({ showMap: e.target.checked })} /></label>
+            {settings.showMap && <div className="field" title="Streets: OpenStreetMap. Ocean: Esri's Ocean Basemap, with depth shading and soundings drawn from GEBCO and NOAA charts.">map base{seg(settings.mapStyle, [['streets', 'streets'], ['ocean', 'ocean']], v => setSettings({ mapStyle: v }))}</div>}
+            {settings.showMap && <label className="field" title="Lay GEBCO's shaded bathymetric relief over the base map, at half strength">GEBCO relief<input type="checkbox" className="switch" checked={settings.mapRelief} onChange={e => setSettings({ mapRelief: e.target.checked })} /></label>}
             <label className="field">titles<input type="checkbox" className="switch" checked={settings.sectionTitles} onChange={e => setSettings({ sectionTitles: e.target.checked })} /></label>
             <div className="field">graphs{seg(settings.sectionGraphTheme, [['light', 'light'], ['dark', 'dark']], v => setSettings({ sectionGraphTheme: v }))}</div>
           </div>
@@ -421,7 +443,16 @@ export default function Transect() {
 
       <div className="stack">
         {settings.showMap && map && (
-          <div className={`plot-card ${settings.sectionGraphTheme}`}><Plot data={map.data} layout={map.layout} filename="station_map" height={420} theme={settings.sectionGraphTheme} onReady={onMapReady} /></div>
+          <div className={`plot-card ${settings.sectionGraphTheme}`}>
+            <Plot data={map.data} layout={map.layout} filename="station_map" height={420} theme={settings.sectionGraphTheme} onReady={onMapReady} />
+            {(settings.mapStyle === 'ocean' || settings.mapRelief) && (
+              <div className="note">
+                {settings.mapStyle === 'ocean' && <a href={MAP_CREDITS.ocean.url} target="_blank" rel="noopener noreferrer">{MAP_CREDITS.ocean.text}</a>}
+                {settings.mapStyle === 'ocean' && settings.mapRelief && ' · '}
+                {settings.mapRelief && <a href={MAP_CREDITS.relief.url} target="_blank" rel="noopener noreferrer">{MAP_CREDITS.relief.text}</a>}
+              </div>
+            )}
+          </div>
         )}
         {chosen.length < 2 && <div className="empty">Tick at least two positioned stations to draw a section.</div>}
         {chosen.length >= 2 && sections.length === 0 && <div className="empty">Tick a variable to draw its section.</div>}

@@ -76,6 +76,8 @@ export interface Settings {
   // uploaded palettes by the variable they colour; '*' colours every section
   palettes: Record<string, { clr: Clr; name: string }>
   showMap: boolean
+  mapStyle: 'streets' | 'ocean'   // OpenStreetMap, or Esri's Ocean Basemap with depth shading
+  mapRelief: boolean              // GEBCO shaded relief laid over the base map
   sectionTitles: boolean
   sectionTitleText: Record<string, string>
   sectionGraphTheme: GraphTheme
@@ -108,7 +110,7 @@ const DEFAULT_SETTINGS: Settings = {
   yVariable: 'depth', yInvert: true, yLabelMode: 'side', profileTitles: true, profileTitleText: {},
   profileGraphTheme: effectiveTheme('system'), graphsPerRow: 3, profileGrid: true, customPairs: [],
   sectionVariables: { Temperature: true }, contourSteps: 0, rangeMode: 'fixed', interpolation: 'smooth', oaScale: '', seafloorSource: 'casts',
-  palettes: {}, showMap: true, sectionTitles: true, sectionTitleText: {}, sectionGraphTheme: effectiveTheme('system'),
+  palettes: {}, showMap: true, mapStyle: 'streets', mapRelief: false, sectionTitles: true, sectionTitleText: {}, sectionGraphTheme: effectiveTheme('system'),
   colorbarName: false, theme: 'system',
 }
 

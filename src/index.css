@@ -1,10 +1,10 @@
 :root {
-  --ground: #f3f6f5;
+  --ground: #f6f1e7;        /* a gentle beige behind the white cards */
   --surface: #ffffff;
-  --surface-2: #eaf0ee;
+  --surface-2: #efe8da;
   --ink: #1c2733;
   --muted: #5f6d78;
-  --rule: #d9e0dd;
+  --rule: #e0d8c8;
   --accent: #1f6f8b;
   --accent-soft: #e2eff4;
   --accent-ink: #ffffff;

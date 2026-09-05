@@ -297,7 +297,7 @@ export function buildSection(stations: SectionStation[], opts: SectionOptions): 
   if (xMin < dist[0]) notes.push(`extended ${(dist[0] - xMin).toFixed(2)} km before ${stations[0].label}, colors there repeat that station`)
   if (xMax > dist[last]) notes.push(`extended ${(xMax - dist[last]).toFixed(2)} km beyond ${stations[last].label}, colors there repeat that station`)
 
-  const top = dmin ?? Math.min(...windowed.map(w => w.z[0]))
+  const top = dmin ?? 0            // the axis starts at the surface; each cast's top value is held up to it
   const bot = dmax ?? Math.max(Math.max(...bottoms), deepestFloor)
   const [nx, ny] = opts.grid ?? [240, 200]
   const xs = Array.from({ length: nx }, (_, i) => xMin + (xMax - xMin) * i / (nx - 1))
@@ -371,8 +371,6 @@ export function buildSection(stations: SectionStation[], opts: SectionOptions): 
     : { coloring: 'heatmap' as const, ...labelStyle }
 
   const span = Math.max(bot - surface, 1e-9)
-  const headRoom = span * 0.13
-  const yMarker = surface - headRoom * 0.3
   const axisBottom = bot + span * 0.02
   const unitText = prettyUnits(units)
   const cbTitle = opts.colorbarName ? labelWithUnits(opts.variable, units) : (unitText || opts.variable)
@@ -387,18 +385,23 @@ export function buildSection(stations: SectionStation[], opts: SectionOptions): 
     x: [...px, px[px.length - 1], px[0]], y: [...floor, axisBottom, axisBottom],
     line: { width: 0, color: '#000000' }, hoverinfo: 'skip', showlegend: false,
   }]
-  stations.forEach((s, i) => data.push({
-    type: 'scatter', mode: 'text+markers', x: [dist[i]], y: [yMarker], name: s.label,
-    marker: { symbol: 'triangle-down', size: 13, color: s.color, line: { color: 'white', width: 1 } },
-    text: [s.label], textposition: 'top center', textfont: { size: 11 },
-    cliponaxis: false, hoverinfo: 'skip', showlegend: false,
-  } as Partial<PlotData>))
+  // Station markers and labels sit in the margin above the plot as
+  // annotations (a scatter trace outside its axis range is culled, even with
+  // clipping off), so the depth axis itself stops at the surface.
+  const annotations = stations.flatMap((s, i) => [
+    { x: dist[i], xref: 'x', y: 1, yref: 'paper', yanchor: 'bottom', yshift: 0, text: '▼', font: { size: 15, color: s.color }, showarrow: false },
+    { x: dist[i], xref: 'x', y: 1, yref: 'paper', yanchor: 'bottom', yshift: 18, text: s.label, font: { size: 11 }, showarrow: false },
+  ]) as unknown as Layout['annotations']
 
   const axis = { showgrid: false, zeroline: false, showline: true, linecolor: '#888', ticks: 'outside' as const, ticklen: 4, tickcolor: '#888', tickfont: { size: 10 }, fixedrange: true }
   const layout: Partial<Layout> = {
     xaxis: { title: { text: 'Distance along transect (km)', standoff: 8 }, range: [xMin, xMax], ...axis },
-    yaxis: { title: { text: profs[0]!.depthLabel, standoff: 8 }, range: [axisBottom, surface - headRoom], tickvals: niceTicks(surface, bot), ...axis },
-    margin: { l: 64, r: 24, t: 40, b: 56 }, showlegend: false,
+    yaxis: { title: { text: profs[0]!.depthLabel, standoff: 8 }, range: [axisBottom, surface], tickvals: niceTicks(surface, bot), ...axis },
+    annotations,
+    // the plot area is seafloor wherever it is not field, so it is black: any
+    // hairline between the two reads as seafloor instead of a white sliver
+    plot_bgcolor: '#000000',
+    margin: { l: 64, r: 24, t: 64, b: 56 }, showlegend: false,
     dragmode: false, hovermode: 'closest',
     modebar: { remove: ['zoom2d', 'pan2d', 'select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'resetScale2d'] },
   }

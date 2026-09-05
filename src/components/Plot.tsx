@@ -46,6 +46,8 @@ export default function Plot({ data, layout, filename = 'chart', height = 520, t
   themeRef.current = theme
   const readyRef = useRef(onReady)
   readyRef.current = onReady
+  const layoutRef = useRef(layout)
+  layoutRef.current = layout
 
   // Full draw only when the figure itself changes.
   useEffect(() => {
@@ -55,7 +57,7 @@ export default function Plot({ data, layout, filename = 'chart', height = 520, t
     const xa = (layout.xaxis ?? {}) as Partial<LayoutAxis>, ya = (layout.yaxis ?? {}) as Partial<LayoutAxis>
     const themed: Partial<Layout> = {
       ...layout,
-      paper_bgcolor: p.surface, plot_bgcolor: p.surface, autosize: true,
+      paper_bgcolor: p.surface, plot_bgcolor: layout.plot_bgcolor ?? p.surface, autosize: true,   // a figure may fix its own plot background
       font: { family: css('--sans'), color: p.ink, size: 12, ...(layout.font ?? {}) },
       xaxis: { gridcolor: p.grid, ...xa, tickfont: { color: p.muted, ...(xa.tickfont ?? {}) } },
       yaxis: { gridcolor: p.grid, ...ya, tickfont: { color: p.muted, ...(ya.tickfont ?? {}) } },
@@ -77,7 +79,7 @@ export default function Plot({ data, layout, filename = 'chart', height = 520, t
     // its style is still loading throws inside the map library.
     if (!gd._fullLayout || gd._fullLayout.map) return
     const p = PALETTES[theme]
-    const update: Record<string, string> = { paper_bgcolor: p.surface, plot_bgcolor: p.surface, 'font.color': p.ink }
+    const update: Record<string, string> = { paper_bgcolor: p.surface, plot_bgcolor: String(layoutRef.current.plot_bgcolor ?? p.surface), 'font.color': p.ink }
     if (gd._fullLayout.xaxis) Object.assign(update, { 'xaxis.gridcolor': p.grid, 'yaxis.gridcolor': p.grid, 'xaxis.tickfont.color': p.muted, 'yaxis.tickfont.color': p.muted })
     Plotly.relayout(el, update as unknown as Partial<Layout>).catch(() => { /* figure gone or mid-draw */ })
   }, [theme])

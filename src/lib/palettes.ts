@@ -78,6 +78,13 @@ function fromLevels(levels: number[], colours: string[], warnings: string[], not
   const lo = levels[0], hi = levels[levels.length - 1]
   if (!(hi > lo)) throw new Error(`${note}: levels must increase`)
   const stops: ColorStops = colours.length ? levels.map((v, i) => [(v - lo) / (hi - lo), colours[i]]) : []
+  // GMT's master tables, ParaView presets and some QGIS exports are written
+  // normalised, 0 to 1 (or -1 to 1 with a hinge); those numbers are positions,
+  // not data values, so they colour the section without setting its range
+  if ((lo === 0 || lo === -1) && hi === 1) {
+    if (!stops.length) throw new Error(`${note}: normalised levels without colours carry nothing`)
+    return { version: 1, interp: 0, stops: dedupe(stops), warnings: [`${note}: normalised ${lo} to 1, so the colours spread over the section's own range`] }
+  }
   return { version: 1, interp: 0, stops, warnings, levels }
 }
 function fromPositions(stops: ColorStops, note: string): Clr {
@@ -157,6 +164,8 @@ export function parseCpt(text: string): Clr {
     if (hsv && g.c0 !== g.c1) for (let k = 1; k < 12; k++) stops.push([p0 + (p1 - p0) * k / 12, blendHsv(g.c0, g.c1, k / 12)])
     stops.push([p1, g.c1])
   }
+  // GMT's master tables are normalised 0 to 1 (or -1 to 1 around a hinge): positions, not data values
+  if ((lo === 0 || lo === -1) && hi === 1) return { version: 1, interp: 0, stops: dedupe(stops), warnings: [`.cpt normalised ${lo} to 1, so the colours spread over the section's own range`] }
   return { version: 1, interp: 0, stops: dedupe(stops), warnings: [rangeNote('.cpt', segs.length + 1, lo, hi)], levels: [lo, hi] }
 }
 
