@@ -4,6 +4,7 @@
 import { create } from 'zustand'
 import { parseCnv, decodeCnv, stationName, naturalCompare, downcastOnly, deepest, positionFromColumns, suspiciousChannels, type Cast } from './lib/cnv'
 import { parseCoordinate, haversineKm } from './lib/geo'
+import { isOpenCtd, parseOpenCtd } from './lib/openctd'
 import { stationColor, type Clr } from './lib/colors'
 
 export interface Station {
@@ -228,10 +229,14 @@ export const useStore = create<State>((set, get) => ({
     const notices: string[] = []
     let stations = [...get().stations]
     for (const f of files) {
-      if (!/\.cnv$/i.test(f.name)) { notices.push(`${f.name}: not a .cnv file, skipped`); continue }
       let cast: Cast
-      try { cast = parseCnv(decodeCnv(f.buffer), f.name) } catch (e) { notices.push((e as Error).message); continue }
-      if (!cast.nrows) { notices.push(`${f.name}: no data rows after *END*`); continue }
+      const text = decodeCnv(f.buffer)
+      if (/\.cnv$/i.test(f.name)) {
+        try { cast = parseCnv(text, f.name) } catch (e) { notices.push((e as Error).message); continue }
+        if (!cast.nrows) { notices.push(`${f.name}: no data rows after *END*`); continue }
+      } else if (/\.(csv|txt)$/i.test(f.name) && isOpenCtd(text)) {
+        try { const r = parseOpenCtd(text, f.name); cast = r.cast; notices.push(`${f.name}: OpenCTD log, ${r.notes.join('; ')}`) } catch (e) { notices.push((e as Error).message); continue }
+      } else { notices.push(`${f.name}: not a Sea-Bird .cnv or an OpenCTD .csv, skipped`); continue }
       let dropped = 0
       try {
         if (!cast.meta.processing.includes('loopedit')) {

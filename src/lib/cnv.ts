@@ -107,9 +107,9 @@ export function parseCnv(text: string, filename = 'cast.cnv'): Cast {
   return { columns, data, nrows: data[0].length, meta }
 }
 
-// "Station_1.cnv" -> "Station 1"; a " (1)" left by a re-upload is dropped.
+// "Station_1.cnv" -> "Station 1", "CAST007.CSV" -> "CAST007"; a " (1)" left by a re-upload is dropped.
 export function stationName(filename: string): string {
-  return filename.replace(/\.cnv$/i, '').replace(/ \(\d+\)$/, '').replace(/[_-]+/g, ' ').trim()
+  return filename.replace(/\.(cnv|csv|txt)$/i, '').replace(/ \(\d+\)$/, '').replace(/[_-]+/g, ' ').trim()
 }
 
 // Natural sort key so Station 2 comes before Station 10.

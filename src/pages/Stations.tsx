@@ -43,7 +43,7 @@ export default function Stations() {
       <div className="row" style={{ justifyContent: 'space-between' }}>
         <div>
           <h1>Stations</h1>
-          <p className="muted small">Add Sea-Bird <span className="mono">.cnv</span> casts. Switch stations in and out of the active set; both tools graph the active ones.</p>
+          <p className="muted small">Add Sea-Bird <span className="mono">.cnv</span> casts or OpenCTD <span className="mono">.csv</span> logs. Switch stations in and out of the active set; both tools graph the active ones.</p>
         </div>
         <div className="row">
           <button className="btn" onClick={loadExamples} disabled={busy} title="Five casts from Colvos and East Passage, Puget Sound, May 2026">{busy ? 'Loading…' : 'Load example casts'}</button>
@@ -55,9 +55,9 @@ export default function Stations() {
         onDragOver={e => { e.preventDefault(); setOver(true) }} onDragLeave={() => setOver(false)} onDrop={onDrop}
         onClick={() => input.current?.click()} role="button" tabIndex={0}
         onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') input.current?.click() }}>
-        <strong>Drop .cnv files here</strong>
-        <span className="muted small">or click to choose. Any number, any Sea-Bird instrument. Nothing is uploaded anywhere: files stay in this tab.</span>
-        <input ref={input} type="file" accept=".cnv" multiple onChange={onPick} />
+        <strong>Drop .cnv or OpenCTD .csv files here</strong>
+        <span className="muted small">or click to choose. Any number, any Sea-Bird instrument; OpenCTD logs get depth, salinity and density worked out from the raw readings. Nothing is uploaded anywhere: files stay in this tab.</span>
+        <input ref={input} type="file" accept=".cnv,.csv,.txt" multiple onChange={onPick} />
       </div>
 
       {notices.length > 0 && (
