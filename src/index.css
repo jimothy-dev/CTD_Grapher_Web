@@ -56,10 +56,9 @@ p { margin: 0 0 8px; }
 .topbar .theme:hover { color: var(--ink); background: var(--surface-2); }
 .badge { font-size: 11px; font-weight: 600; background: var(--accent); color: var(--accent-ink); border-radius: 999px; padding: 1px 7px; font-variant-numeric: tabular-nums; }
 .content { flex: 1; width: 100%; max-width: 1360px; margin: 0 auto; padding: 22px 24px 40px; }
-.foot { padding: 14px 24px 22px; text-align: right; }
-.foot a { color: var(--muted); font-size: 12px; text-decoration: none; opacity: 0.7; }
-.foot a:hover { opacity: 1; text-decoration: underline; }
-.foot { color: var(--muted); font-size: 12px; opacity: 0.8; }
+.foot { padding: 14px 24px 22px; text-align: right; color: var(--muted); font-size: 15px; }
+.foot a { color: var(--muted); font-size: 15px; font-weight: 500; text-decoration: none; padding: 6px 10px; border-radius: 999px; }
+.foot a:hover { color: var(--ink); background: var(--surface-2); }
 .btn.disabled { opacity: 0.45; cursor: default; pointer-events: none; }
 a.btn { text-decoration: none; }
 .feedback { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 10px; }
@@ -170,6 +169,6 @@ input.inline::placeholder { color: var(--muted); opacity: 1; }
 .item .mid.wp .to { color: var(--accent); }
 
 /* about */
-.about { max-width: 62ch; }
+.about { max-width: 92ch; font-size: 16px; }
 .about ul { padding-left: 18px; }
 .about li { margin: 4px 0; }

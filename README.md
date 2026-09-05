@@ -37,6 +37,8 @@ npm run build
 
 React, TypeScript, Vite, Plotly.js. Deployed to GitHub Pages by the workflow in `.github/workflows/`. Public sample casts for testing are in `public/samples/` with their sources.
 
+**Feedback inbox.** The Feedback page posts to a form endpoint when one is configured, so people can write without signing in and the message arrives by email. Create a free form (Formspree gives a form URL; Web3Forms gives an access key), then in the repository's Settings → Secrets and variables → Actions → Variables set `VITE_FEEDBACK_ENDPOINT` to the URL (`https://formspree.io/f/…`, or `https://api.web3forms.com/submit` with `VITE_FEEDBACK_KEY` set to the key) and re-run the deploy. Without them the page falls back to opening a prefilled GitHub issue.
+
 ## Cite
 
 Simpson, J. (2026). CTD Grapher (v1.0.0). https://github.com/jimothy-dev/CTD_Grapher_Web (see `CITATION.cff`).

@@ -314,7 +314,7 @@ export default function Transect() {
       <div className="stack">
         <div>
           <h1>Transect</h1>
-          <p className="muted small">Stations are ordered along the line from the most north-western one, nearest next; drag to change. Untick any not on it.</p>
+          <p className="muted small">Stations are ordered along the line from the most north-western one, nearest next; drag to change. Untick any not included.</p>
         </div>
         <div className="card">
           <div className="row" style={{ justifyContent: 'space-between', alignItems: 'baseline' }}>

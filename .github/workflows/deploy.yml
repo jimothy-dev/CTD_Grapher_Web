@@ -24,7 +24,12 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # Feedback inbox: repository variables (Settings > Secrets and variables >
+      # Actions > Variables). Unset, the Feedback page falls back to GitHub issues.
       - run: npm run build
+        env:
+          VITE_FEEDBACK_ENDPOINT: ${{ vars.VITE_FEEDBACK_ENDPOINT }}
+          VITE_FEEDBACK_KEY: ${{ vars.VITE_FEEDBACK_KEY }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
