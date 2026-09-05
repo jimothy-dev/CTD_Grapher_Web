@@ -31,6 +31,7 @@ const rank = (e: Entry) => (e.name ? 0 : 1)
 
 export default function Feedback() {
   const [name, setName] = useState('')
+  const [contact, setContact] = useState('')     // private route only; never part of the GitHub link
   const [text, setText] = useState('')
   const [state, setState] = useState<'idle' | 'busy' | 'sent'>('idle')
   const [list, setList] = useState<Entry[] | null>(null)
@@ -67,7 +68,7 @@ export default function Feedback() {
     <div className="about stack">
       <div>
         <h1>Feedback</h1>
-        <p className="muted">An issue, a suggestion, a file that would not load. Name is optional{ENDPOINT ? '; no account needed' : ''}.</p>
+        <p className="muted">An issue, a suggestion, a file that would not load. Name{ENDPOINT ? ' and email are' : ' is'} optional{ENDPOINT ? '; no account needed' : ''}.</p>
       </div>
       <form className="card stack" style={{ gap: 10 }} method="post" action={ENDPOINT || undefined} onSubmit={e => { if (!ENDPOINT || !message) e.preventDefault(); else setState('busy') }}>
         {ENDPOINT && KEY && <input type="hidden" name="access_key" value={KEY} />}
@@ -76,9 +77,12 @@ export default function Feedback() {
         {ENDPOINT && <input type="hidden" name="redirect" value={back} />}
         {ENDPOINT && <input type="hidden" name="_next" value={back} />}
         {ENDPOINT && <input type="checkbox" name="botcheck" tabIndex={-1} aria-hidden="true" style={{ display: 'none' }} />}
-        <label className="field" style={{ maxWidth: 320 }}>name (optional)<input name="name" value={name} onChange={e => setName(e.target.value)} placeholder="who you are" /></label>
+        <div className="row">
+          <label className="field" style={{ flex: '1 1 180px', maxWidth: 320 }}>name (optional)<input name="name" value={name} onChange={e => setName(e.target.value)} placeholder="who you are" /></label>
+          {ENDPOINT && <label className="field" style={{ flex: '1 1 220px', maxWidth: 360 }} title="Only for the private send below; it goes to the author's inbox and nowhere else. A public post on GitHub carries your GitHub account instead.">email (optional, for a reply)<input name="email" type="email" value={contact} onChange={e => setContact(e.target.value)} placeholder="stays private" /></label>}
+        </div>
         <label className="field">your suggestion or issue
-          <textarea name="message" value={text} onChange={e => { setText(e.target.value); if (state !== 'busy') setState('idle') }} rows={9} placeholder={ENDPOINT ? 'What happened, or what would help. If a file would not load, say which instrument wrote it. Add an email if you would like a reply.' : 'What happened, or what would help. If a file would not load, say which instrument wrote it.'} style={{ resize: 'vertical', padding: '8px 10px', border: '1px solid var(--rule)', borderRadius: 8, background: 'var(--ground)', color: 'var(--ink)', font: 'inherit' }} />
+          <textarea name="message" value={text} onChange={e => { setText(e.target.value); if (state !== 'busy') setState('idle') }} rows={9} placeholder="What happened, or what would help. If a file would not load, say which instrument wrote it." style={{ resize: 'vertical', padding: '8px 10px', border: '1px solid var(--rule)', borderRadius: 8, background: 'var(--ground)', color: 'var(--ink)', font: 'inherit' }} />
         </label>
         {ENDPOINT ? (
           <div className="row" style={{ justifyContent: 'space-between' }}>
