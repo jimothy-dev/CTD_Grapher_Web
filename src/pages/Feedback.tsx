@@ -4,33 +4,33 @@ import { useEffect, useState } from 'react'
 // With a form endpoint configured at build time (a Formspree form URL, or
 // Web3Forms with its access key; see the README), the form posts straight to
 // it and the message arrives by email, no account needed. Without one, or as
-// the public alternative, the form composes a GitHub issue on the project
-// repository. The list below reads those issues back, so what others have
-// sent publicly is visible here; entries that say who sent them sort first.
+// the public alternative, the form opens the repository's Feedback issue
+// form, prefilled. The list below reads those issues back, so what others
+// have sent publicly is visible here, each with the GitHub account it came
+// from; entries that also give a name sort first.
 const REPO = 'jimothy-dev/CTD_Grapher_Web'
 const PREFIX = 'Feedback: '
 const ENDPOINT = ((import.meta.env.VITE_FEEDBACK_ENDPOINT as string | undefined) ?? '').trim()
 const KEY = ((import.meta.env.VITE_FEEDBACK_KEY as string | undefined) ?? '').trim()
 
-interface Entry { id: number; url: string; when: string; name: string; contact: string; text: string; open: boolean; comments: number }
-interface Issue { number: number; html_url: string; title: string; body: string | null; created_at: string; state: string; comments: number; pull_request?: unknown; labels?: { name: string }[] }
+interface Entry { id: number; url: string; when: string; name: string; github: string; githubUrl: string; text: string; open: boolean; comments: number }
+interface Issue { number: number; html_url: string; title: string; body: string | null; created_at: string; state: string; comments: number; pull_request?: unknown; labels?: { name: string }[]; user?: { login: string; html_url: string } | null }
 // an issue counts as feedback when the page composed it (title prefix) or when it carries the feedback label
 const isFeedback = (i: Issue) => !i.pull_request && (i.title.startsWith(PREFIX) || (i.labels ?? []).some(l => l.name === 'feedback'))
 
 function parseIssue(i: Issue): Entry {
   // the issue form writes "### Name" headings; older links wrote "Name:" lines; both are read
   const body = (i.body ?? '').replace(/^###\s*(Name|Contact|Message)\s*\r?\n+/gim, '$1: ').replace(/_No response_/g, '')
-  // a field is what follows its label on the same line only ([ \t], not \s, or an empty Name would swallow the Contact line)
+  // a field is what follows its label on the same line only ([ \t], not \s, or an empty Name would swallow the next line)
   const field = (label: string) => { const m = body.match(new RegExp(`^${label}:[ \\t]*(.*)$`, 'mi')); const v = (m?.[1] ?? '').trim(); return /^\(not given\)$|^-?$/.test(v) ? '' : v }
   const text = body.replace(/^(Name|Contact):.*$/gim, '').replace(/^Message:\s*/im, '').replace(/_Sent from the app.*$/is, '').trim() || (i.title.startsWith(PREFIX) ? i.title.slice(PREFIX.length) : i.title)
-  return { id: i.number, url: i.html_url, when: i.created_at, name: field('Name'), contact: field('Contact'), text, open: i.state === 'open', comments: i.comments }
+  return { id: i.number, url: i.html_url, when: i.created_at, name: field('Name'), github: i.user?.login ?? '', githubUrl: i.user?.html_url ?? '', text, open: i.state === 'open', comments: i.comments }
 }
-// who said it: name and contact first, contact only next, name only after that, nothing last
-const rank = (e: Entry) => (e.name && e.contact ? 0 : e.contact ? 1 : e.name ? 2 : 3)
+// entries that give a name first, then the rest; newest first within each
+const rank = (e: Entry) => (e.name ? 0 : 1)
 
 export default function Feedback() {
   const [name, setName] = useState('')
-  const [contact, setContact] = useState('')
   const [text, setText] = useState('')
   const [state, setState] = useState<'idle' | 'busy' | 'sent'>('idle')
   const [list, setList] = useState<Entry[] | null>(null)
@@ -50,14 +50,7 @@ export default function Feedback() {
   // the repository's issue form (.github/ISSUE_TEMPLATE/feedback.yml) applies the
   // feedback label for anyone; its fields are filled from the query string
   const q = (v: string) => encodeURIComponent(v)
-  const githubHref = `https://github.com/${REPO}/issues/new?template=feedback.yml&title=${q(title)}&name=${q(name.trim())}&contact=${q(contact.trim())}&message=${q(message)}`
-  // header of an entry: only the parts that were given, each labelled; "anonymous" when neither was
-  const who = (e: Entry) => {
-    const parts = []
-    if (e.name) parts.push(`Name: ${e.name}`)
-    if (e.contact) parts.push(`Contact: ${e.contact}`)
-    return parts.join(' · ') || 'anonymous'
-  }
+  const githubHref = `https://github.com/${REPO}/issues/new?template=feedback.yml&title=${q(title)}&name=${q(name.trim())}&message=${q(message)}`
 
   // The form posts the ordinary way, not through fetch: a plain form post
   // needs no cross-origin permission from the service, and if the service
@@ -74,7 +67,7 @@ export default function Feedback() {
     <div className="about stack">
       <div>
         <h1>Feedback</h1>
-        <p className="muted">An issue, a suggestion, a file that would not load. Name and contact are optional{ENDPOINT ? '; no account needed' : ''}.</p>
+        <p className="muted">An issue, a suggestion, a file that would not load. Name is optional{ENDPOINT ? '; no account needed' : ''}.</p>
       </div>
       <form className="card stack" style={{ gap: 10 }} method="post" action={ENDPOINT || undefined} onSubmit={e => { if (!ENDPOINT || !message) e.preventDefault(); else setState('busy') }}>
         {ENDPOINT && KEY && <input type="hidden" name="access_key" value={KEY} />}
@@ -83,12 +76,9 @@ export default function Feedback() {
         {ENDPOINT && <input type="hidden" name="redirect" value={back} />}
         {ENDPOINT && <input type="hidden" name="_next" value={back} />}
         {ENDPOINT && <input type="checkbox" name="botcheck" tabIndex={-1} aria-hidden="true" style={{ display: 'none' }} />}
-        <div className="row">
-          <label className="field" style={{ flex: '1 1 180px' }}>name (optional)<input name="name" value={name} onChange={e => setName(e.target.value)} placeholder="who you are" /></label>
-          <label className="field" style={{ flex: '1 1 220px' }}>email or contact (optional)<input name="email" value={contact} onChange={e => setContact(e.target.value)} placeholder="so you can be answered" /></label>
-        </div>
+        <label className="field" style={{ maxWidth: 320 }}>name (optional)<input name="name" value={name} onChange={e => setName(e.target.value)} placeholder="who you are" /></label>
         <label className="field">your suggestion or issue
-          <textarea name="message" value={text} onChange={e => { setText(e.target.value); if (state !== 'busy') setState('idle') }} rows={9} placeholder="What happened, or what would help. If a file would not load, say which instrument wrote it." style={{ resize: 'vertical', padding: '8px 10px', border: '1px solid var(--rule)', borderRadius: 8, background: 'var(--ground)', color: 'var(--ink)', font: 'inherit' }} />
+          <textarea name="message" value={text} onChange={e => { setText(e.target.value); if (state !== 'busy') setState('idle') }} rows={9} placeholder={ENDPOINT ? 'What happened, or what would help. If a file would not load, say which instrument wrote it. Add an email if you would like a reply.' : 'What happened, or what would help. If a file would not load, say which instrument wrote it.'} style={{ resize: 'vertical', padding: '8px 10px', border: '1px solid var(--rule)', borderRadius: 8, background: 'var(--ground)', color: 'var(--ink)', font: 'inherit' }} />
         </label>
         {ENDPOINT ? (
           <div className="row" style={{ justifyContent: 'space-between' }}>
@@ -100,7 +90,7 @@ export default function Feedback() {
           </div>
         ) : (
           <div className="row" style={{ justifyContent: 'space-between' }}>
-            <span className="small muted">Posts as an issue on the project's GitHub page, which needs a free GitHub account; what you write there, name and contact included, is public.</span>
+            <span className="small muted">Posts as an issue on the project's GitHub page, which needs a free GitHub account; what you write there is public, under your GitHub account.</span>
             <a className={'btn primary' + (message ? '' : ' disabled')} href={message ? githubHref : undefined} target="_blank" rel="noopener noreferrer" aria-disabled={!message} onClick={e => { if (!message) e.preventDefault() }}>send via GitHub</a>
           </div>
         )}
@@ -115,7 +105,14 @@ export default function Feedback() {
             {list.map(e => (
               <li key={e.id} className={e.open ? '' : 'closed'}>
                 <div className="row small" style={{ justifyContent: 'space-between' }}>
-                  <span><strong>{who(e)}</strong> <span className="muted">· {new Date(e.when).toLocaleDateString()}{e.open ? '' : ' · resolved'}</span></span>
+                  <span>
+                    <strong>
+                      {e.name && <>Name: {e.name}{e.github ? ' · ' : ''}</>}
+                      {e.github && <>GitHub: <a href={e.githubUrl} target="_blank" rel="noopener noreferrer">{e.github}</a></>}
+                      {!e.name && !e.github && 'anonymous'}
+                    </strong>
+                    <span className="muted"> · {new Date(e.when).toLocaleDateString()}{e.open ? '' : ' · resolved'}</span>
+                  </span>
                   <a href={e.url} target="_blank" rel="noopener noreferrer" className="small">on GitHub{e.comments ? ` (${e.comments} ${e.comments === 1 ? 'reply' : 'replies'})` : ''}</a>
                 </div>
                 <p className="small" style={{ margin: '4px 0 0', whiteSpace: 'pre-wrap' }}>{e.text.length > 400 ? e.text.slice(0, 400) + '…' : e.text}</p>

@@ -7,14 +7,7 @@ body:
     id: name
     attributes:
       label: Name
-      description: Optional
-    validations:
-      required: false
-  - type: input
-    id: contact
-    attributes:
-      label: Contact
-      description: Optional, an email or another way to reach you
+      description: Optional; your GitHub account is shown either way
     validations:
       required: false
   - type: textarea
