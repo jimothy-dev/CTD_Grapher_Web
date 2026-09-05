@@ -89,8 +89,8 @@ a.btn { text-decoration: none; }
 .plot-card.light input.inline:hover, .plot-card.light input.inline:focus { background: #f3f6f5; border-color: #d9e0dd; }
 .plot-card.dark input.inline:hover, .plot-card.dark input.inline:focus { background: #0f151a; border-color: #2a3540; }
 .seg.tiny button { padding: 2px 8px; font-size: 12px; }
-.plot-card.light .seg { border-color: #d9e0dd; } .plot-card.light .seg button { background: #ffffff; color: #5f6d78; } .plot-card.light .seg button.on { background: #e2eff4; color: #1f6f8b; }
-.plot-card.dark .seg { border-color: #2a3540; } .plot-card.dark .seg button { background: #172028; color: #98a5ae; } .plot-card.dark .seg button.on { background: #1d3340; color: #6fb7d6; }
+.plot-card.light .seg { border-color: #d9e0dd; background: #b9b1a3; } .plot-card.light .seg button { background: #ffffff; color: #5f6d78; } .plot-card.light .seg button.on { background: #e2eff4; color: #1f6f8b; }
+.plot-card.dark .seg { border-color: #2a3540; background: #4a5966; } .plot-card.dark .seg button { background: #172028; color: #98a5ae; } .plot-card.dark .seg button.on { background: #1d3340; color: #6fb7d6; }
 .field .hint { font-size: 11px; color: var(--muted); font-family: var(--mono); }
 
 .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--rule); background: var(--surface); cursor: pointer; font-weight: 500; }
@@ -105,7 +105,8 @@ a.btn { text-decoration: none; }
 .chip.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 500; }
 .chip input { display: none; }
 /* button groups wrap inside their pill when the column is too narrow for one line */
-.seg { display: inline-flex; flex-wrap: wrap; max-width: 100%; border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; }
+/* the group's own background shows through the 1px row gap as a line between wrapped rows */
+.seg { display: inline-flex; flex-wrap: wrap; row-gap: 1px; max-width: 100%; border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; background: var(--seg-line); }
 .seg button { border: 0; background: var(--surface); padding: 6px 12px; cursor: pointer; font-size: 13px; color: var(--muted); white-space: nowrap; flex: 1 1 auto; }
 .seg button.on { background: var(--accent-soft); color: var(--accent); font-weight: 500; }
 /* a visible line between the buttons of a group: darker than the card rules, which vanish against the white buttons */
