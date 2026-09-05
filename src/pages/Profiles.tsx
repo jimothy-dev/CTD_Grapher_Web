@@ -4,7 +4,9 @@ import { useStore, type LegendPos } from '../store'
 import { availableVariables } from '../lib/cnv'
 import { buildProfile } from '../lib/profiles'
 import { prettyUnits } from '../lib/units'
+import { labelFor } from '../lib/labels'
 import PlotCard from '../components/PlotCard'
+import LabelEditor from '../components/LabelEditor'
 
 const num = (s: string): number | null => { const v = parseFloat(s); return Number.isFinite(v) ? v : null }
 const DEPTH = { name: 'Depth', shorts: [] as string[] }
@@ -35,13 +37,17 @@ export default function Profiles() {
     }
     return [...seen.values()]
   }, [active])
-  const choice = (name: string) => {
+  // internal name -> what to plot and what to call it (custom labels apply to variables and channels alike)
+  const named = (name: string) => labelFor(name, settings.variableLabels)
+  const choice = (name: string): { name: string; shorts: string[]; label?: string } => {
     if (name.startsWith('col:')) {
       const c = channels.find(ch => ch.short.toLowerCase() === name.slice(4).toLowerCase())
-      return c ? { name: c.desc ? `${c.desc} (${c.short})` : c.short, shorts: [c.short.toLowerCase()] } : DEPTH
+      if (!c) return DEPTH
+      const dflt = c.desc ? `${c.desc} (${c.short})` : c.short
+      return { name: dflt, shorts: [c.short.toLowerCase()], label: labelFor(name, settings.variableLabels, dflt) }
     }
     const v = variables.find(v => v.name === name)
-    return v ? { name: v.name, shorts: v.shorts } : DEPTH
+    return v ? { name: v.name, shorts: v.shorts, label: named(v.name) } : DEPTH
   }
   const yChoice = useMemo(() => choice(settings.yVariable),
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -52,10 +58,10 @@ export default function Profiles() {
 
   const figures = useMemo(() => variables
     .filter(v => isOn(v.name, v.on) && v.name !== yChoice.name)
-    .map(v => buildProfile(profileStations, { variable: v.name, shorts: v.shorts, y: yChoice, yInvert: settings.yInvert, ...common }))
+    .map(v => buildProfile(profileStations, { variable: v.name, label: named(v.name), shorts: v.shorts, y: yChoice, yInvert: settings.yInvert, ...common }))
     .filter((f): f is NonNullable<typeof f> => f !== null),
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  [profileStations, variables, settings.variables, dmin, dmax, settings.lineShape, settings.legendPos, settings.yInvert, settings.yLabelMode, settings.profileGrid, yChoice])
+  [profileStations, variables, settings.variables, settings.variableLabels, dmin, dmax, settings.lineShape, settings.legendPos, settings.yInvert, settings.yLabelMode, settings.profileGrid, yChoice])
 
   // Custom pairs: any variable against any other, or against depth. Depth
   // reads downward as usual; a variable on Y reads upward.
@@ -64,11 +70,17 @@ export default function Profiles() {
     if (x === DEPTH) return null
     const y = choice(p.y)
     if (y.name === x.name) return null
-    const fig = buildProfile(profileStations, { variable: x.name, shorts: x.shorts, y, yInvert: y.name === 'Depth' ? settings.yInvert : false, ...common })
+    const fig = buildProfile(profileStations, { variable: x.name, label: x.label, shorts: x.shorts, y, yInvert: y.name === 'Depth' ? settings.yInvert : false, ...common })
     return fig ? { key: `${p.x}|${p.y}`, pair: p, fig } : null
   }).filter((p): p is NonNullable<typeof p> => p !== null),
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  [profileStations, variables, channels, settings.customPairs, dmin, dmax, settings.lineShape, settings.legendPos, settings.yInvert, settings.yLabelMode, settings.profileGrid])
+  [profileStations, variables, channels, settings.customPairs, settings.variableLabels, dmin, dmax, settings.lineShape, settings.legendPos, settings.yInvert, settings.yLabelMode, settings.profileGrid])
+
+  // labels can be typed for every variable present and for any channel an extra graph uses
+  const labelItems = [
+    ...variables.map(v => ({ key: v.name, caption: v.name })),
+    ...[...new Set(settings.customPairs.flatMap(p => [p.x, p.y]).filter(k => k.startsWith('col:')))].map(k => ({ key: k, caption: k.slice(4) })),
+  ]
 
   if (!active.length) return <div className="empty">No active stations. <Link to="/">Add or switch some on.</Link></div>
 
@@ -104,15 +116,16 @@ export default function Profiles() {
         {variables.map(v => (
           <label key={v.name} className={'chip' + (isOn(v.name, v.on) ? ' on' : '')} title={prettyUnits(v.units, false)}>
             <input type="checkbox" checked={isOn(v.name, v.on)} onChange={e => setSettings({ variables: { ...settings.variables, [v.name]: e.target.checked } })} />
-            {v.name}
+            {named(v.name)}
           </label>
         ))}
       </div>
+      <LabelEditor items={labelItems} />
       <div className="card controls">
         <label className="field">y variable
           <select value={settings.yVariable} onChange={e => setSettings({ yVariable: e.target.value, yInvert: e.target.value === 'depth' ? true : settings.yInvert })}>
             <option value="depth">Depth</option>
-            {variables.map(v => <option key={v.name} value={v.name}>{v.name}</option>)}
+            {variables.map(v => <option key={v.name} value={v.name}>{named(v.name)}</option>)}
           </select>
         </label>
         <div className="field" title="Inverted: the y axis grows down the page, the usual way to draw depth. Not inverted: the largest value at the top.">y axis{seg(settings.yInvert ? 'down' : 'up', [['down', 'inverted'], ['up', 'not inverted']], v => setSettings({ yInvert: v === 'down' }))}</div>
@@ -130,14 +143,14 @@ export default function Profiles() {
         <span className="small muted" style={{ alignSelf: 'center' }}>extra graph:</span>
         <label className="field">x
           <select value={xDefault} onChange={e => setPairX(e.target.value)}>
-            {variables.map(v => <option key={v.name} value={v.name}>{v.name}</option>)}
+            {variables.map(v => <option key={v.name} value={v.name}>{named(v.name)}</option>)}
             {channels.length > 0 && <optgroup label="other channels in the files">{channels.map(c => <option key={c.short} value={`col:${c.short}`}>{c.desc || c.short}{c.units ? ` [${c.units}]` : ''} · {c.short}</option>)}</optgroup>}
           </select>
         </label>
         <label className="field">y
           <select value={pairY} onChange={e => setPairY(e.target.value)}>
             <option value="depth">Depth</option>
-            {variables.map(v => <option key={v.name} value={v.name}>{v.name}</option>)}
+            {variables.map(v => <option key={v.name} value={v.name}>{named(v.name)}</option>)}
             {channels.length > 0 && <optgroup label="other channels in the files">{channels.map(c => <option key={c.short} value={`col:${c.short}`}>{c.desc || c.short}{c.units ? ` [${c.units}]` : ''} · {c.short}</option>)}</optgroup>}
           </select>
         </label>

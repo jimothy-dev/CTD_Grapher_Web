@@ -107,6 +107,10 @@ a.btn { text-decoration: none; }
 .seg { display: inline-flex; flex-wrap: wrap; max-width: 100%; border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; }
 .seg button { border: 0; background: var(--surface); padding: 6px 12px; cursor: pointer; font-size: 13px; color: var(--muted); white-space: nowrap; flex: 1 1 auto; }
 .seg button.on { background: var(--accent-soft); color: var(--accent); font-weight: 500; }
+.seg button + button { border-left: 1px solid var(--rule); }     /* a line between the buttons of a group */
+.plot-card.light .seg button + button { border-left-color: #d9e0dd; }
+.plot-card.dark .seg button + button { border-left-color: #2a3540; }
+.field input.label-box { width: 150px; font-size: 13px; padding: 5px 8px; }
 .field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); min-width: 0; max-width: 100%; }
 .field input, .field select { padding: 7px 9px; border: 1px solid var(--rule); border-radius: 8px; background: var(--ground); color: var(--ink); font-size: 14px; min-width: 0; }
 .field input[type=number], .field input.coord { font-family: var(--mono); font-variant-numeric: tabular-nums; }

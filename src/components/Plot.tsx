@@ -74,14 +74,18 @@ export default function Plot({ data, layout, filename = 'chart', height = 520, t
   useEffect(() => {
     const el = ref.current
     if (!el) return
-    const gd = el as unknown as { _fullLayout?: { xaxis?: unknown; map?: unknown } }
-    // A map draws its own tiles and has no themed parts; touching it while
-    // its style is still loading throws inside the map library.
-    if (!gd._fullLayout || gd._fullLayout.map) return
+    const gd = el as unknown as { _fullLayout?: { xaxis?: unknown; map?: { _subplot?: { map?: { isStyleLoaded?: () => boolean; once: (ev: string, fn: () => void) => void } } } } }
+    if (!gd._fullLayout) return
     const p = PALETTES[theme]
     const update: Record<string, string> = { paper_bgcolor: p.surface, plot_bgcolor: String(layoutRef.current.plot_bgcolor ?? p.surface), 'font.color': p.ink }
     if (gd._fullLayout.xaxis) Object.assign(update, { 'xaxis.gridcolor': p.grid, 'yaxis.gridcolor': p.grid, 'xaxis.tickfont.color': p.muted, 'yaxis.tickfont.color': p.muted })
-    Plotly.relayout(el, update as unknown as Partial<Layout>).catch(() => { /* figure gone or mid-draw */ })
+    const apply = () => { try { Plotly.relayout(el, update as unknown as Partial<Layout>).catch(() => { /* figure gone or mid-draw */ }) } catch { /* map library mid-load */ } }
+    // A map's legend and paper are themed like any figure, but touching the
+    // figure while the map style is still loading throws inside the map
+    // library, so wait for the style when it is not ready.
+    const m = gd._fullLayout.map?._subplot?.map
+    if (m && typeof m.isStyleLoaded === 'function' && !m.isStyleLoaded()) m.once('style.load', apply)
+    else apply()
   }, [theme])
 
   // Plotly only listens for window resizes; a card that changes width when

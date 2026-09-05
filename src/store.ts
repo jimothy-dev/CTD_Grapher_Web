@@ -51,6 +51,8 @@ export function effectiveTheme(theme: Theme): GraphTheme {
 }
 
 export interface Settings {
+  // what each variable is called on the graphs, by internal name; blank means the default
+  variableLabels: Record<string, string>
   // profiles
   variables: Record<string, boolean>
   depthMin: string
@@ -104,6 +106,7 @@ interface State {
 }
 
 const DEFAULT_SETTINGS: Settings = {
+  variableLabels: {},
   variables: {}, depthMin: '', depthMax: '', lineShape: 'spline', legendPos: 'right',
   yVariable: 'depth', yInvert: true, yLabelMode: 'side', profileTitles: true, profileTitleText: {},
   profileGraphTheme: effectiveTheme('system'), graphsPerRow: 3, profileGrid: true, customPairs: [],

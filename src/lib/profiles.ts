@@ -6,9 +6,10 @@ import { labelWithUnits, prettyUnits, unitFactor } from './units'
 import type { LegendPos, YLabelMode } from '../store'
 
 export interface ProfileStation { id: string; name: string; color: string; cast: Cast }
-export interface YChoice { name: string; shorts: string[] }          // name 'Depth' means the depth channel
+export interface YChoice { name: string; shorts: string[]; label?: string }          // name 'Depth' means the depth channel
 export interface ProfileOptions {
   variable: string
+  label?: string        // what to call it on the graph; defaults to the variable name
   shorts: string[]
   y: YChoice
   depthMin: number | null
@@ -33,7 +34,8 @@ export function buildProfile(stations: ProfileStation[], o: ProfileOptions): Pro
   const missing: string[] = []
   const xUnitsBy: { name: string; units: string }[] = [], yUnitsBy: { name: string; units: string }[] = []
   const pressureFor: string[] = [], convertedX: string[] = [], convertedY: string[] = []
-  let xUnits = '', yUnits = '', yLabelBase = o.y.name, deepestSeen = 0
+  const xName = o.label ?? o.variable
+  let xUnits = '', yUnits = '', yLabelBase = o.y.label ?? o.y.name, deepestSeen = 0
   const yIsDepth = o.y.name === 'Depth'
   for (const s of stations) {
     const xcol = findColumn(s.cast, o.shorts)
@@ -64,7 +66,7 @@ export function buildProfile(stations: ProfileStation[], o: ProfileOptions): Pro
     data.push({
       type: 'scatter', mode: 'lines', name: s.name, x: pts.map(p => p[0]), y: pts.map(p => p[1]),
       line: { color: s.color, width: 2, shape: o.lineShape, smoothing: 0.6 },
-      hovertemplate: `<b>${s.name}</b><br>${o.variable}: %{x:.3f}<br>${yLabelBase}: %{y:.2f}<extra></extra>`,
+      hovertemplate: `<b>${s.name}</b><br>${xName}: %{x:.3f}<br>${yLabelBase}: %{y:.2f}<extra></extra>`,
     } as Partial<PlotData>)
   }
   if (!data.length) return null
@@ -72,11 +74,11 @@ export function buildProfile(stations: ProfileStation[], o: ProfileOptions): Pro
   const warnings: string[] = []
   if (convertedX.length) warnings.push(`converted to ${prettyUnits(xUnits, false)}: ${convertedX.join(', ')}`)
   if (convertedY.length) warnings.push(`converted to ${prettyUnits(yUnits, false)}: ${convertedY.join(', ')}`)
-  const xm = unitMismatch(xUnitsBy, o.variable); if (xm) warnings.push(xm)
-  const ym = unitMismatch(yUnitsBy, o.y.name); if (ym) warnings.push(ym)
+  const xm = unitMismatch(xUnitsBy, xName); if (xm) warnings.push(xm)
+  const ym = unitMismatch(yUnitsBy, yLabelBase); if (ym) warnings.push(ym)
   if (pressureFor.length && pressureFor.length < data.length) warnings.push(`pressure (db) stands in for depth at ${pressureFor.join(', ')}`)
 
-  const xLabel = labelWithUnits(o.variable, xUnits)
+  const xLabel = labelWithUnits(xName, xUnits)
   const yLabel = labelWithUnits(yLabelBase, yUnits)
   const invert = o.yInvert
   const xTop = invert    // read from the top when depth increases downward
@@ -106,5 +108,5 @@ export function buildProfile(stations: ProfileStation[], o: ProfileOptions): Pro
       ? [{ text: yLabel, xref: 'paper', yref: 'paper', x: 0, y: 1, xanchor: 'right', yanchor: 'bottom', xshift: -6, yshift: xTop ? 30 : 6, showarrow: false, font: { size: 12 } }]
       : [],
   }
-  return { variable: o.variable, data, layout, missing, warnings, autoTitle: `${yLabelBase} vs ${o.variable}` }
+  return { variable: o.variable, data, layout, missing, warnings, autoTitle: `${yLabelBase} vs ${xName}` }
 }

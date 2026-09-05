@@ -55,6 +55,7 @@ export function routeDistances(stations: SectionStation[]): Route {
 
 export interface SectionOptions {
   variable: string
+  label?: string        // what to call it on the graph; defaults to the variable name
   shorts: string[]
   depthMin?: number | null
   depthMax?: number | null
@@ -175,7 +176,8 @@ export function buildSection(stations: SectionStation[], opts: SectionOptions): 
     p!.v = p!.v.map(v => v * f); converted.push(`${stations[i].label} (${prettyUnits(p!.units, false)})`); p!.units = units
   })
   if (converted.length) notes.push(`converted to ${prettyUnits(units, false)}: ${converted.join(', ')}`)
-  const um = unitMismatch(profs.map((p, i) => ({ name: stations[i].label, units: p!.units })), opts.variable)
+  const shown = opts.label ?? opts.variable
+  const um = unitMismatch(profs.map((p, i) => ({ name: stations[i].label, units: p!.units })), shown)
   if (um) warnings.push(um)
   const pressure = profs.filter(p => p!.depthLabel.startsWith('Pressure')).length
   if (pressure && pressure < profs.length) warnings.push(`pressure (db) stands in for depth at ${stations.filter((_, i) => profs[i]!.depthLabel.startsWith('Pressure')).map(s => s.label).join(', ')}`)
@@ -321,13 +323,13 @@ export function buildSection(stations: SectionStation[], opts: SectionOptions): 
   const span = Math.max(bot - surface, 1e-9)
   const axisBottom = bot + span * 0.02
   const unitText = prettyUnits(units)
-  const cbTitle = opts.colorbarName ? labelWithUnits(opts.variable, units) : (unitText || opts.variable)
+  const cbTitle = opts.colorbarName ? labelWithUnits(shown, units) : (unitText || shown)
 
   const data: Partial<PlotData>[] = [{
     type: 'contour', x: xs, y: ys, z, colorscale, zmin: range[0], zmax: range[1], zauto: false,
     contours, line: { width: 0.5, color: 'rgba(0,0,0,0.35)' }, connectgaps: false, hoverongaps: false,
     colorbar: { title: { text: cbTitle, side: 'right' }, thickness: 14, len: 0.9, outlinewidth: 0, tick0: range[0], dtick: tick, tickformat: '.2f' },
-    hovertemplate: `%{x:.2f} km<br>%{y:.1f} m<br>${opts.variable}: %{z:.3f} ${unitText}<extra></extra>`,
+    hovertemplate: `%{x:.2f} km<br>%{y:.1f} m<br>${shown}: %{z:.3f} ${unitText}<extra></extra>`,
   } as Partial<PlotData>, {
     type: 'scatter', mode: 'lines', name: 'seafloor', fill: 'toself', fillcolor: '#000000',
     x: [...px, px[px.length - 1], px[0]], y: [...floor, axisBottom, axisBottom],
@@ -354,5 +356,5 @@ export function buildSection(stations: SectionStation[], opts: SectionOptions): 
     modebar: { remove: ['zoom2d', 'pan2d', 'select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'resetScale2d'] },
   }
   if (used) notes.unshift(`${used} waypoint depth${used === 1 ? '' : 's'} on the seafloor`)
-  return { data, layout, distances: dist, units, notes, warnings, used, autoTitle: `${opts.variable} section` }
+  return { data, layout, distances: dist, units, notes, warnings, used, autoTitle: `${shown} section` }
 }

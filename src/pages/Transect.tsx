@@ -8,8 +8,10 @@ import { buildSection, routeDistances, type SectionStation, type RoutePoint } fr
 import { fetchSeafloor, forgetSeafloor, routeKey, SOURCES, type SeafloorResult } from '../lib/bathymetry'
 import { parsePalette, PALETTE_EXTENSIONS } from '../lib/palettes'
 import { fractionAlong, haversineKm } from '../lib/geo'
+import { labelFor } from '../lib/labels'
 import Plot from '../components/Plot'
 import PlotCard from '../components/PlotCard'
+import LabelEditor from '../components/LabelEditor'
 
 const num = (s: string): number | null => { const v = parseFloat(s); return Number.isFinite(v) ? v : null }
 type LatLon = { lat: number; lon: number }
@@ -165,7 +167,7 @@ export default function Transect() {
     return {
       variable: v.name,
       result: buildSection(chosen, {
-        variable: v.name, shorts: v.shorts, depthMin: dmin, depthMax: dmax, nContours: settings.contourSteps,
+        variable: v.name, label: labelFor(v.name, settings.variableLabels), shorts: v.shorts, depthMin: dmin, depthMax: dmax, nContours: settings.contourSteps,
         colorscale: pal && pal.clr.stops.length ? pal.clr.stops : null,
         range: levels ? [levels[0], levels[levels.length - 1]] : settings.rangeMode === 'auto' ? 'auto' : null,
         colorbarName: settings.colorbarName,
@@ -381,10 +383,11 @@ export default function Transect() {
             {variables.map(v => (
               <label key={v.name} className={'chip' + (isOn(v.name) ? ' on' : '')}>
                 <input type="checkbox" checked={isOn(v.name)} onChange={e => setSettings({ sectionVariables: { ...settings.sectionVariables, [v.name]: e.target.checked } })} />
-                {v.name}
+                {labelFor(v.name, settings.variableLabels)}
               </label>
             ))}
           </div>
+          <div style={{ marginBottom: 10 }}><LabelEditor items={variables.filter(v => isOn(v.name)).map(v => ({ key: v.name, caption: v.name }))} /></div>
           <div className="row">
             <label className="field">depth from (m)<input type="number" value={settings.depthMin} placeholder="surface" style={{ width: 88 }} onChange={e => setSettings({ depthMin: e.target.value })} /></label>
             <label className="field">depth to (m)<input type="number" value={settings.depthMax} placeholder="bottom" style={{ width: 88 }} onChange={e => setSettings({ depthMax: e.target.value })} /></label>
@@ -404,7 +407,7 @@ export default function Transect() {
             <label className="field">your own color palette, for
               <span className="row">
                 <select value={paletteTarget} onChange={e => setPaletteFor(e.target.value)} aria-label="Which section the palette colors">
-                  {variables.map(v => <option key={v.name} value={v.name}>{v.name}</option>)}
+                  {variables.map(v => <option key={v.name} value={v.name}>{labelFor(v.name, settings.variableLabels)}</option>)}
                   <option value="*">all sections (position palettes only)</option>
                 </select>
                 <label className="btn tiny" title={`Accepted: ${PALETTE_EXTENSIONS.join('  ')}\nSurfer .clr and .lvl, GMT .cpt, ODV .pal, Ferret .spk, NCL .rgb, SNAP .cpd, GIMP .ggr, ParaView .json/.xml, QGIS ramps, GRASS and GDAL rules.\nA file with real values also sets the color range.\nChecked against real files for GMT, Ferret, NCL, ODV, ncWMS, SNAP, GIMP, ParaView, QGIS and GRASS; Surfer and ESRI files only against their documented examples so far. The note under a loaded palette says what was read.`}>choose palette file<input type="file" accept={PALETTE_EXTENSIONS.join(',')} onChange={onPalette} style={{ display: 'none' }} /></label>
