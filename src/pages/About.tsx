@@ -9,7 +9,7 @@ export default function About() {
       <div className="card">
         <ul>
           <li>Reads Sea-Bird <span className="mono">.cnv</span> casts from any instrument, and OpenCTD <span className="mono">.csv</span> logs, for which depth, salinity and density are worked out from the raw readings.</li>
-          <li>Profiles put any variable against depth, or against another variable.</li>
+          <li>Profiles put any variable against depth, or against another variable. Cast shows one station with every variable on its own scale in one picture.</li>
           <li>Transects put the stations in order along a line, let you route it with waypoints, and draw the seafloor from the casts or from NOAA or EMODnet depth maps.</li>
           <li>A colour means the same value on every section, unless you load your own palette.</li>
           <li>Everything between casts is interpolated. The station markers and the black seafloor show what was measured.</li>

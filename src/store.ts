@@ -69,6 +69,11 @@ export interface Settings {
   profileGrid: boolean            // grid lines inside the profile graphs
   // extra graphs of one variable against another (or depth), e.g. Temperature vs Salinity
   customPairs: { x: string; y: string }[]
+  // cast page: one station, every variable on its own x scale
+  castStation: string                       // station id; blank means the first active one
+  castAll: boolean                          // one plot per active station instead
+  castVariables: Record<string, boolean>    // which variables, by internal name; unset means the page default
+  castTitleText: Record<string, string>     // per station id
   // transect
   sectionVariables: Record<string, boolean>
   contourSteps: number
@@ -110,6 +115,7 @@ const DEFAULT_SETTINGS: Settings = {
   variables: {}, depthMin: '', depthMax: '', lineShape: 'spline', legendPos: 'right',
   yVariable: 'depth', yInvert: true, yLabelMode: 'side', profileTitles: true, profileTitleText: {},
   profileGraphTheme: effectiveTheme('system'), graphsPerRow: 3, profileGrid: true, customPairs: [],
+  castStation: '', castAll: false, castVariables: {}, castTitleText: {},
   sectionVariables: { Temperature: true }, contourSteps: 0, rangeMode: 'fixed', seafloorSource: 'casts',
   palettes: {}, showMap: true, mapStyle: 'ocean', sectionTitles: true, sectionTitleText: {}, sectionGraphTheme: effectiveTheme('system'),
   colorbarName: true, theme: 'system',
