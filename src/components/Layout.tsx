@@ -33,8 +33,8 @@ export default function Layout() {
         </Link>
         <nav aria-label="Main">
           <NavLink to="/" end>Stations{count ? <span className="badge">{active}/{count}</span> : null}</NavLink>
-          <NavLink to="/profiles">Profiles</NavLink>
           <NavLink to="/cast">Cast</NavLink>
+          <NavLink to="/profiles">Profiles</NavLink>
           <NavLink to="/transect">Transect</NavLink>
           <button className="theme" onClick={toggle} title={dark ? 'Switch the site and graphs to light' : 'Switch the site and graphs to dark'} aria-label="Toggle light and dark">
             {dark
