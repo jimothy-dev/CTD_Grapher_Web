@@ -29,7 +29,6 @@ export default function About() {
       <div className="card">
         <ul>
           <li><a href="https://github.com/jimothy-dev/CTD_Grapher_Web" {...ext}>Source on GitHub</a></li>
-          <li><a href="https://colab.research.google.com/github/jimothy-dev/CTD_Grapher_v2/blob/main/CTD_Grapher_v2.ipynb" {...ext}>The Colab notebook</a> it grew out of</li>
           <li><a href="https://doi.org/10.5281/zenodo.22371639" {...ext}>Cite it</a>: Simpson, J. (2026). CTD Grapher. Zenodo, doi 10.5281/zenodo.22371639</li>
           <li><a href="https://github.com/jimothy-dev" {...ext}>jimothy-dev</a></li>
         </ul>
