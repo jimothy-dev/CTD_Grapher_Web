@@ -78,7 +78,13 @@ export default function Plot({ data, layout, filename = 'chart', height = 520, t
     if (!gd._fullLayout) return
     const p = PALETTES[theme]
     const update: Record<string, string> = { paper_bgcolor: p.surface, plot_bgcolor: String(layoutRef.current.plot_bgcolor ?? p.surface), 'font.color': p.ink }
-    if (gd._fullLayout.xaxis) Object.assign(update, { 'xaxis.gridcolor': p.grid, 'yaxis.gridcolor': p.grid, 'xaxis.tickfont.color': p.muted, 'yaxis.tickfont.color': p.muted })
+    // tick colours the figure chose itself (a cast plot's coloured axes) are left alone
+    const xa = layoutRef.current.xaxis as Partial<LayoutAxis> | undefined, ya = layoutRef.current.yaxis as Partial<LayoutAxis> | undefined
+    if (gd._fullLayout.xaxis) {
+      Object.assign(update, { 'xaxis.gridcolor': p.grid, 'yaxis.gridcolor': p.grid })
+      if (!xa?.tickfont?.color) update['xaxis.tickfont.color'] = p.muted
+      if (!ya?.tickfont?.color) update['yaxis.tickfont.color'] = p.muted
+    }
     const apply = () => { try { Plotly.relayout(el, update as unknown as Partial<Layout>).catch(() => { /* figure gone or mid-draw */ }) } catch { /* map library mid-load */ } }
     // A map's legend and paper are themed like any figure, but touching the
     // figure while the map style is still loading throws inside the map
