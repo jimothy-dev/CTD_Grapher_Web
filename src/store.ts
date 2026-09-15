@@ -51,6 +51,8 @@ export function effectiveTheme(theme: Theme): GraphTheme {
 }
 
 export interface Settings {
+  // bumped when a default changes, so a tab that saved the old default picks up the new one
+  version: number
   // what each variable is called on the graphs, by internal name; blank means the default
   variableLabels: Record<string, string>
   // profiles
@@ -110,7 +112,9 @@ interface State {
   dismissNotices: () => void
 }
 
+const SETTINGS_VERSION = 2
 const DEFAULT_SETTINGS: Settings = {
+  version: SETTINGS_VERSION,
   variableLabels: {},
   variables: {}, depthMin: '', depthMax: '', lineShape: 'spline', legendPos: 'right',
   yVariable: 'depth', yInvert: true, yLabelMode: 'side', profileTitles: true, profileTitleText: {},
@@ -202,7 +206,10 @@ function load(): { stations: Station[]; transect: TransectState; settings: Setti
     const old = (s.transect as unknown as { mids?: Record<string, { d: number | null; z: number | null }[]> }).mids
     const typed = old ? Object.values(old).flat().filter(m => m.z !== null).length : 0
     if (typed) notices.push(`${typed} typed seafloor point${typed === 1 ? '' : 's'} from an earlier version were dropped; give a waypoint a depth instead`)
-    return { stations, transect: reconcile(s.transect, stations), settings: { ...DEFAULT_SETTINGS, ...s.settings }, notices }
+    // defaults that changed since the tab saved its settings take effect (version 2: every station on the cast page, no grid lines)
+    const saved: Partial<Settings> = { ...s.settings }
+    if ((saved.version ?? 1) < 2) { delete saved.castAll; delete saved.profileGrid }
+    return { stations, transect: reconcile(s.transect, stations), settings: { ...DEFAULT_SETTINGS, ...saved, version: SETTINGS_VERSION }, notices }
   } catch { return null }
 }
 
