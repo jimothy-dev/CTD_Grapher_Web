@@ -400,10 +400,6 @@ export default function Transect() {
             <div className="field">color bar label{seg(settings.colorbarName ? 'name' : 'units', [['units', 'units'], ['name', 'name and units']], v => setSettings({ colorbarName: v === 'name' }))}</div>
           </div>
           <div className="row" style={{ marginTop: 10 }}>
-            <div className="field" title="Where the black seafloor comes from: the casts' deepest readings and the depths you give waypoints, or surveyed bathymetry sampled along the routed line. NOAA NCEI's DEM mosaic is worldwide (coastal DEMs down to 1/9 arc-second, ETOPO 2022 at 15 arc-second elsewhere); EMODnet covers European seas at 1/16 arc-minute. A cast that went deeper than the grid keeps its own depth, and land on the line is reported.">seafloor{seg<SeafloorSource>(source, [['casts', 'casts and waypoints'], ['ncei', 'NOAA NCEI DEMs'], ['emodnet', 'EMODnet (Europe)']], v => setSettings({ seafloorSource: v }))}</div>
-            {floorStatus}
-          </div>
-          <div className="row" style={{ marginTop: 10 }}>
             <label className="field">your own color palette, for
               <span className="row">
                 <select value={paletteTarget} onChange={e => setPaletteFor(e.target.value)} aria-label="Which section the palette colors">
@@ -448,6 +444,10 @@ export default function Transect() {
             onTitle={t => setSettings({ sectionTitleText: { ...settings.sectionTitleText, [variable]: t } })}
             note={[...result.warnings, ...result.notes].length ? [...result.warnings, ...result.notes].join(' · ') : undefined} />
         ) : <div key={variable} className="note muted small">{variable}: not in every chosen station.</div>)}
+        <div className="card controls">
+          <div className="field" title="Where the black seafloor comes from: the casts' deepest readings and the depths you give waypoints, or surveyed bathymetry sampled along the routed line. NOAA NCEI's DEM mosaic is worldwide (coastal DEMs down to 1/9 arc-second, ETOPO 2022 at 15 arc-second elsewhere); EMODnet covers European seas at 1/16 arc-minute. A cast that went deeper than the grid keeps its own depth, and land on the line is reported.">seafloor{seg<SeafloorSource>(source, [['casts', 'casts and waypoints'], ['ncei', 'NOAA NCEI DEMs'], ['emodnet', 'EMODnet (Europe)']], v => setSettings({ seafloorSource: v }))}</div>
+          {floorStatus}
+        </div>
         <p className="muted small">A vertical section (transect plot): distance along a line of stations against depth, colored by one variable and interpolated between the casts.</p>
         {source !== 'casts' && floorReady?.result && <p className="muted small">Seafloor: <a href={SOURCES[source].url} target="_blank" rel="noopener noreferrer">{SOURCES[source].credit}</a>.</p>}
       </div>
