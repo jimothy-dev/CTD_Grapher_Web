@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
+import { prettyUnits } from '../lib/units'
 import { Link } from 'react-router-dom'
 import Plotly from 'plotly.js-dist-min'
 import type { PlotData, Layout, PlotlyHTMLElement } from 'plotly.js'
@@ -167,7 +168,7 @@ export default function Transect() {
     return {
       variable: v.name,
       result: buildSection(chosen, {
-        variable: v.name, label: labelFor(v.name, settings.variableLabels), shorts: v.shorts, depthMin: dmin, depthMax: dmax, nContours: settings.contourSteps,
+        variable: v.name, label: labelFor(v.name, settings.variableLabels), shorts: v.shorts, depthMin: dmin, depthMax: dmax, interval: num(settings.contourInterval[v.name] ?? ''), banded: settings.contourBanded,
         colorscale: pal && pal.clr.stops.length ? pal.clr.stops : null,
         range: levels ? [levels[0], levels[levels.length - 1]] : settings.rangeMode === 'auto' ? 'auto' : null,
         colorbarName: settings.colorbarName,
@@ -391,10 +392,22 @@ export default function Transect() {
           <div className="row">
             <label className="field">depth from (m)<input type="number" value={settings.depthMin} placeholder="surface" style={{ width: 88 }} onChange={e => setSettings({ depthMin: e.target.value })} /></label>
             <label className="field">depth to (m)<input type="number" value={settings.depthMax} placeholder="bottom" style={{ width: 88 }} onChange={e => setSettings({ depthMax: e.target.value })} /></label>
-            <label className="field" style={{ flex: 1, minWidth: 140 }}>contour steps: {settings.contourSteps || 'smooth'}
-              <input type="range" min={0} max={50} value={settings.contourSteps} onChange={e => setSettings({ contourSteps: +e.target.value })} />
-            </label>
+            <div className="field" title="Smooth: the colour varies continuously, with contour lines drawn over it. Banded: one colour between each pair of contours, a filled contour plot.">shading{seg(settings.contourBanded ? 'banded' : 'smooth', [['smooth', 'smooth'], ['banded', 'banded']], v => setSettings({ contourBanded: v === 'banded' }))}</div>
           </div>
+          {sections.length > 0 && (
+            <div className="row" style={{ marginTop: 10 }} title="Contour lines are drawn every so many units of the variable, on round values. Leave a box blank for an interval chosen from the colour range.">
+              <span className="small muted" style={{ alignSelf: 'center' }}>contour interval:</span>
+              {sections.map(({ variable, result }) => {
+                const units = prettyUnits(variables.find(x => x.name === variable)?.units ?? '')
+                return (
+                  <label key={variable} className="field">{labelFor(variable, settings.variableLabels)}{units ? ` (${units})` : ''}
+                    <input type="number" min={0} step="any" value={settings.contourInterval[variable] ?? ''} placeholder={result ? `auto: ${result.interval}` : 'auto'} style={{ width: 110 }} aria-label={`Contour interval for ${variable}`}
+                      onChange={e => { const next = { ...settings.contourInterval }; if (e.target.value.trim()) next[variable] = e.target.value; else delete next[variable]; setSettings({ contourInterval: next }) }} />
+                  </label>
+                )
+              })}
+            </div>
+          )}
           <div className="row" style={{ marginTop: 10 }}>
             <div className="field">color range{seg(settings.rangeMode, [['fixed', 'fixed'], ['auto', 'this survey']], v => setSettings({ rangeMode: v }))}</div>
             <div className="field">color bar label{seg(settings.colorbarName ? 'name' : 'units', [['units', 'units'], ['name', 'name and units']], v => setSettings({ colorbarName: v === 'name' }))}</div>

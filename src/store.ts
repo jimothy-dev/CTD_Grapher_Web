@@ -78,7 +78,8 @@ export interface Settings {
   castTitleText: Record<string, string>     // per station id
   // transect
   sectionVariables: Record<string, boolean>
-  contourSteps: number
+  contourBanded: boolean                    // one colour between contours, rather than smooth shading
+  contourInterval: Record<string, string>   // contour interval per variable, typed in its units; blank means a round one is picked
   rangeMode: 'fixed' | 'auto'
   seafloorSource: SeafloorSource       // the casts and waypoint depths, or surveyed bathymetry along the route
   // uploaded palettes by the variable they colour; '*' colours every section
@@ -112,7 +113,7 @@ interface State {
   dismissNotices: () => void
 }
 
-const SETTINGS_VERSION = 2
+const SETTINGS_VERSION = 3
 const DEFAULT_SETTINGS: Settings = {
   version: SETTINGS_VERSION,
   variableLabels: {},
@@ -120,7 +121,7 @@ const DEFAULT_SETTINGS: Settings = {
   yVariable: 'depth', yInvert: true, yLabelMode: 'side', profileTitles: true, profileTitleText: {},
   profileGraphTheme: effectiveTheme('system'), graphsPerRow: 3, profileGrid: false, customPairs: [],
   castStation: '', castAll: true, castVariables: {}, castTitleText: {},
-  sectionVariables: { Temperature: true }, contourSteps: 0, rangeMode: 'fixed', seafloorSource: 'casts',
+  sectionVariables: { Temperature: true }, contourBanded: false, contourInterval: {}, rangeMode: 'fixed', seafloorSource: 'casts',
   palettes: {}, showMap: true, mapStyle: 'ocean', sectionTitles: true, sectionTitleText: {}, sectionGraphTheme: effectiveTheme('system'),
   colorbarName: true, theme: 'system',
 }
@@ -209,6 +210,8 @@ function load(): { stations: Station[]; transect: TransectState; settings: Setti
     // defaults that changed since the tab saved its settings take effect (version 2: every station on the cast page, no grid lines)
     const saved: Partial<Settings> = { ...s.settings }
     if ((saved.version ?? 1) < 2) { delete saved.castAll; delete saved.profileGrid }
+    // 3: the contour-steps slider became a smooth/banded switch and an interval per variable
+    if ((saved.version ?? 1) < 3) { const old = saved as unknown as Record<string, unknown>; if (typeof old.contourSteps === 'number' && old.contourSteps > 0) saved.contourBanded = true; delete old.contourSteps }
     return { stations, transect: reconcile(s.transect, stations), settings: { ...DEFAULT_SETTINGS, ...saved, version: SETTINGS_VERSION }, notices }
   } catch { return null }
 }

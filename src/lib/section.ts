@@ -59,7 +59,8 @@ export interface SectionOptions {
   shorts: string[]
   depthMin?: number | null
   depthMax?: number | null
-  nContours?: number
+  interval?: number | null   // contour interval in the variable's units; none picks a round one
+  banded?: boolean           // one colour between each pair of contours, rather than continuous shading
   colorscale?: ColorStops | null
   range?: [number, number] | 'auto' | null
   grid?: [number, number]
@@ -78,6 +79,7 @@ export interface SectionResult {
   notes: string[]     // what was used, skipped and why, and any extension past the ends
   warnings: string[]  // things to fix: land on the line, units that differ between stations
   used: number
+  interval: number    // the contour interval drawn, in the variable's units
   autoTitle: string
 }
 
@@ -319,15 +321,18 @@ export function buildSection(stations: SectionStation[], opts: SectionOptions): 
   else range = def.range
   if (!range || range[0] === range[1]) { range = range ? [range[0] - 0.5, range[1] + 0.5] : [0, 1]; tick = niceStep(range[1] - range[0], 7) }
 
-  // contour levels at round values: a nice step giving about n slices (about 15 lines on a smooth section)
-  const n = opts.nContours ?? 0
-  const size = niceStep(range[1] - range[0], n > 0 ? n : 15)
-  const start = snapUp(range[0], size)
-  const levels = { start, end: Math.max(snapDown(range[1], size), start), size, labelformat: `.${decimalsFor(size)}f` }
-  const labelStyle = { showlabels: true, labelfont: { size: 9, color: "#111" } }
-  const contours = n > 0
-    ? { coloring: "fill" as const, showlines: true, ...levels, ...labelStyle }
-    : { coloring: "heatmap" as const, ...levels, ...labelStyle }
+  // contour lines every round interval, about 16 across the colour range
+  // unless one is given, each on a multiple of it; a bar tick or a line label
+  // carries only the decimals its step needs
+  const auto = niceStep(range[1] - range[0], 16)
+  let interval = opts.interval && opts.interval > 0 ? opts.interval : auto
+  if ((range[1] - range[0]) / interval > 200) { warnings.push(`a contour interval of ${interval} would draw over 200 lines; ${auto} used`); interval = auto }
+  const start = snapUp(range[0], interval)
+  const levels = { start, end: Math.max(snapDown(range[1], interval), start), size: interval, labelformat: `.${decimalsFor(interval)}f` }
+  const labelStyle = { showlabels: true, labelfont: { size: 9, color: '#111' } }
+  const contours = opts.banded
+    ? { coloring: 'fill' as const, showlines: true, ...levels, ...labelStyle }
+    : { coloring: 'heatmap' as const, ...levels, ...labelStyle }
 
   const span = Math.max(bot - surface, 1e-9)
   const axisBottom = bot + span * 0.02
@@ -337,7 +342,7 @@ export function buildSection(stations: SectionStation[], opts: SectionOptions): 
   const data: Partial<PlotData>[] = [{
     type: 'contour', x: xs, y: ys, z, colorscale, zmin: range[0], zmax: range[1], zauto: false,
     contours, line: { width: 0.5, color: 'rgba(0,0,0,0.35)' }, connectgaps: false, hoverongaps: false,
-    colorbar: { title: { text: cbTitle, side: 'right' }, thickness: 14, len: 0.9, outlinewidth: 0, tick0: 0, dtick: tick, tickformat: ".2f" },
+    colorbar: { title: { text: cbTitle, side: 'right' }, thickness: 14, len: 0.9, outlinewidth: 0, tick0: 0, dtick: tick, tickformat: `.${decimalsFor(tick)}f` },
     hovertemplate: `%{x:.2f} km<br>%{y:.1f} m<br>${shown}: %{z:.3f} ${unitText}<extra></extra>`,
   } as Partial<PlotData>, {
     type: 'scatter', mode: 'lines', name: 'seafloor', fill: 'toself', fillcolor: '#000000',
@@ -365,5 +370,5 @@ export function buildSection(stations: SectionStation[], opts: SectionOptions): 
     modebar: { remove: ['zoom2d', 'pan2d', 'select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'resetScale2d'] },
   }
   if (used) notes.unshift(`${used} waypoint depth${used === 1 ? '' : 's'} on the seafloor`)
-  return { data, layout, distances: dist, units, notes, warnings, used, autoTitle: `${shown} section` }
+  return { data, layout, distances: dist, units, notes, warnings, used, interval, autoTitle: `${shown} section` }
 }
