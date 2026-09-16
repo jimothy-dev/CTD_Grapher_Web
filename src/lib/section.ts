@@ -6,7 +6,7 @@
 import type { PlotData, Layout } from 'plotly.js'
 import { profile, unitMismatch, type Cast } from './cnv'
 import { alongTrack } from './geo'
-import { defaultScale, percentileRange, niceStep, type ColorStops } from './colors'
+import { defaultScale, percentileRange, niceStep, snapDown, snapUp, decimalsFor, type ColorStops } from "./colors"
 import { labelWithUnits, prettyUnits, unitFactor } from './units'
 
 export interface RoutePoint { lat: number; lon: number; depth: number | null }
@@ -304,21 +304,30 @@ export function buildSection(stations: SectionStation[], opts: SectionOptions): 
   const def = defaultScale(opts.variable, units)
   const colorscale = opts.colorscale ?? def.colorscale
   let range: [number, number] | null = null
-  if (opts.range === 'auto' || (!opts.range && !def.range)) {
+  let tick = def.tick
+  if (opts.range === "auto" || (!opts.range && !def.range)) {
     const shown: number[] = []
     for (let i = 0; i < nx; i++) if (xs[i] >= dist[0] - 1e-9 && xs[i] <= dist[last] + 1e-9) for (let j = 0; j < ny; j++) shown.push(z[j][i])
     range = percentileRange(shown.length ? shown : z.flat())
+    // ...and runs out to round numbers, so the colour bar reads 6, 8, 10 rather than 6.34, 8.34
+    if (range && range[1] > range[0]) {
+      tick = niceStep(range[1] - range[0], 7)
+      range = [snapDown(range[0], tick), snapUp(range[1], tick)]
+    }
   }
-  else if (Array.isArray(opts.range)) range = opts.range
+  else if (Array.isArray(opts.range)) { range = opts.range; tick = niceStep(range[1] - range[0], 7) }
   else range = def.range
-  if (!range || range[0] === range[1]) range = range ? [range[0] - 0.5, range[1] + 0.5] : [0, 1]
-  const tick = opts.range === 'auto' || !def.range ? niceStep(range[1] - range[0], 7) : def.tick
+  if (!range || range[0] === range[1]) { range = range ? [range[0] - 0.5, range[1] + 0.5] : [0, 1]; tick = niceStep(range[1] - range[0], 7) }
 
+  // contour levels at round values: a nice step giving about n slices (about 15 lines on a smooth section)
   const n = opts.nContours ?? 0
-  const labelStyle = { showlabels: true, labelfont: { size: 9, color: '#111' } }
+  const size = niceStep(range[1] - range[0], n > 0 ? n : 15)
+  const start = snapUp(range[0], size)
+  const levels = { start, end: Math.max(snapDown(range[1], size), start), size, labelformat: `.${decimalsFor(size)}f` }
+  const labelStyle = { showlabels: true, labelfont: { size: 9, color: "#111" } }
   const contours = n > 0
-    ? { coloring: 'fill' as const, showlines: true, start: range[0], end: range[1], size: Math.max((range[1] - range[0]) / n, 1e-9), ...labelStyle }
-    : { coloring: 'heatmap' as const, ...labelStyle }
+    ? { coloring: "fill" as const, showlines: true, ...levels, ...labelStyle }
+    : { coloring: "heatmap" as const, ...levels, ...labelStyle }
 
   const span = Math.max(bot - surface, 1e-9)
   const axisBottom = bot + span * 0.02
@@ -328,7 +337,7 @@ export function buildSection(stations: SectionStation[], opts: SectionOptions): 
   const data: Partial<PlotData>[] = [{
     type: 'contour', x: xs, y: ys, z, colorscale, zmin: range[0], zmax: range[1], zauto: false,
     contours, line: { width: 0.5, color: 'rgba(0,0,0,0.35)' }, connectgaps: false, hoverongaps: false,
-    colorbar: { title: { text: cbTitle, side: 'right' }, thickness: 14, len: 0.9, outlinewidth: 0, tick0: range[0], dtick: tick, tickformat: '.2f' },
+    colorbar: { title: { text: cbTitle, side: 'right' }, thickness: 14, len: 0.9, outlinewidth: 0, tick0: 0, dtick: tick, tickformat: ".2f" },
     hovertemplate: `%{x:.2f} km<br>%{y:.1f} m<br>${shown}: %{z:.3f} ${unitText}<extra></extra>`,
   } as Partial<PlotData>, {
     type: 'scatter', mode: 'lines', name: 'seafloor', fill: 'toself', fillcolor: '#000000',

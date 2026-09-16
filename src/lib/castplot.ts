@@ -6,7 +6,7 @@
 import type { PlotData, Layout, LayoutAxis } from 'plotly.js'
 import { findColumn, depthColumn, type Cast } from './cnv'
 import { labelWithUnits, prettyUnits } from './units'
-import { niceStep } from './colors'
+import { niceStep, decimalsFor } from './colors'
 
 export interface CastVariable { name: string; shorts: string[]; label: string }
 export interface CastPlotOptions {
@@ -56,7 +56,7 @@ export function buildCastPlot(cast: Cast, o: CastPlotOptions): CastPlotResult | 
     if (!(hi > lo)) hi = lo + 1
     const step = niceStep(hi - lo, 6)
     const r0 = Math.floor(lo / step) * step, r1 = Math.ceil(hi / step) * step
-    const decimals = (step.toFixed(6).replace(/0+$/, '').split('.')[1] ?? '').length     // as many as the step needs: 0.25 shows 6.25, not 6.3
+    const decimals = decimalsFor(step)
     const tickvals: number[] = []
     for (let t = r0; t <= r1 + step * 1e-6; t += step) tickvals.push(+t.toFixed(decimals + 2))
     axes.push({ label: labelWithUnits(v.label, col.units), color, range: [r0, r1], tickvals, ticktext: tickvals.map(t => t.toFixed(decimals)) })

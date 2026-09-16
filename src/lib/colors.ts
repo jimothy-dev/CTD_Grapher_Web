@@ -51,6 +51,12 @@ export const DEFAULTS: Record<string, Default> = {
   'CDOM': { scale: 'matter', fixed: null },
 }
 
+// Round a value down or up to a multiple of a step (cleaned of float noise).
+export const snapDown = (v: number, step: number): number => +(Math.floor(v / step + 1e-6) * step).toFixed(6)
+export const snapUp = (v: number, step: number): number => +(Math.ceil(v / step - 1e-6) * step).toFixed(6)
+// The decimals a step needs: 2 -> 0, 0.5 -> 1, 0.25 -> 2.
+export const decimalsFor = (step: number): number => (step.toFixed(6).replace(/0+$/, "").split(".")[1] ?? "").length
+
 // A round step for about n intervals across a span.
 export function niceStep(span: number, n = 8): number {
   const raw = Math.max(Math.abs(span), 1e-9) / n
