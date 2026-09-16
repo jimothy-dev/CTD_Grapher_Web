@@ -401,7 +401,7 @@ export default function Transect() {
                 const units = prettyUnits(variables.find(x => x.name === variable)?.units ?? '')
                 return (
                   <label key={variable} className="field">{labelFor(variable, settings.variableLabels)}{units ? ` (${units})` : ''}
-                    <input type="number" min={0} step="any" value={settings.contourInterval[variable] ?? ''} placeholder={result ? `auto: ${result.intervalAuto}` : 'auto'} title={result ? `Any interval down to ${result.resolution}, the resolution of the data` : undefined} style={{ width: 110 }} aria-label={`Contour interval for ${variable}`}
+                    <input type="number" min={0} step="any" value={settings.contourInterval[variable] ?? ''} placeholder={result ? `auto: ${result.intervalAuto}` : 'auto'} title={result ? `Any interval down to ${result.resolution}, the resolution of the data` : undefined} style={{ width: 132 }} aria-label={`Contour interval for ${variable}`}
                       onChange={e => { const next = { ...settings.contourInterval }; if (e.target.value.trim()) next[variable] = e.target.value; else delete next[variable]; setSettings({ contourInterval: next }) }} />
                   </label>
                 )

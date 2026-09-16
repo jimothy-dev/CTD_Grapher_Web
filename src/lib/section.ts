@@ -331,10 +331,10 @@ export function buildSection(stations: SectionStation[], opts: SectionOptions): 
   if (!range || range[0] === range[1]) { range = range ? [range[0] - 0.5, range[1] + 0.5] : [0, 1]; tick = niceStep(range[1] - range[0], 7) }
 
   // contour lines every round interval, about 16 across the colour range
-  // unless one is given, each on a multiple of it; a bar tick or a line label
+  // unless one is given (temperature: 0.25 °C), each on a multiple of it; a bar tick or a line label
   // carries only the decimals its step needs. Any interval goes, down to the
   // resolution the data were logged at.
-  const auto = niceStep(range[1] - range[0], 16)
+  const auto = def.interval ?? niceStep(range[1] - range[0], 16)
   const dataDecimals = Math.min(6, Math.max(0, ...windowed.map(w => decimalsIn(w.v))))
   const resolution = 10 ** -dataDecimals
   let interval = opts.interval && opts.interval > 0 ? opts.interval : auto

@@ -39,9 +39,9 @@ export const SCALES: Record<string, ColorStops> = {
 // the oxy map's red edge sits at the 2 mg/L hypoxia threshold and its yellow
 // edge at 100 % saturation.
 type Fixed = { range: [number, number]; tick: number }
-interface Default { scale: string; fixed: Fixed | Record<string, Fixed> | null }
+interface Default { scale: string; fixed: Fixed | Record<string, Fixed> | null; interval?: number }  // interval: the default contour interval, in the variable's units
 export const DEFAULTS: Record<string, Default> = {
-  'Temperature': { scale: 'thermal', fixed: { range: [6, 20], tick: 2 } },
+  'Temperature': { scale: 'thermal', fixed: { range: [6, 20], tick: 2 }, interval: 0.25 },
   'Salinity': { scale: 'haline', fixed: { range: [20, 32], tick: 2 } },
   'Density (sigma-t)': { scale: 'dense', fixed: { range: [18, 26], tick: 1 } },
   'Dissolved Oxygen': { scale: 'oxy', fixed: { 'mg/l': { range: [0, 10], tick: 2 }, 'ml/l': { range: [0, 7], tick: 1 }, '% sat': { range: [0, 125], tick: 25 }, 'mol/kg': { range: [0, 350], tick: 50 } } },
@@ -64,7 +64,7 @@ export function niceStep(span: number, n = 8): number {
   return [1, 2, 2.5, 5, 10].map(m => m * mag).find(s => s >= raw) ?? raw
 }
 
-export function defaultScale(variable: string, units: string): { colorscale: ColorStops; range: [number, number] | null; tick: number } {
+export function defaultScale(variable: string, units: string): { colorscale: ColorStops; range: [number, number] | null; tick: number; interval: number | null } {
   const d = DEFAULTS[variable] ?? { scale: 'deep', fixed: null }
   let fixed: Fixed | null = null
   if (d.fixed && 'range' in d.fixed) fixed = d.fixed as Fixed
@@ -73,7 +73,7 @@ export function defaultScale(variable: string, units: string): { colorscale: Col
     const hit = Object.entries(d.fixed as Record<string, Fixed>).find(([k]) => u.includes(k))
     fixed = hit ? hit[1] : null
   }
-  return { colorscale: SCALES[d.scale], range: fixed?.range ?? null, tick: fixed?.tick ?? 1 }
+  return { colorscale: SCALES[d.scale], range: fixed?.range ?? null, tick: fixed?.tick ?? 1, interval: d.interval ?? null }
 }
 
 export function percentileRange(values: Iterable<number | null>, lo = 0.02, hi = 0.98): [number, number] | null {
