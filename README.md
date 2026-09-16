@@ -18,7 +18,7 @@ Depth profiles and transect sections from Sea-Bird `.cnv` CTD casts, in the brow
 
 Uploads and settings stay in the browser tab, including across a reload, and are gone when the tab closes.
 
-The same graphs as a Colab notebook: [CTD_Grapher_v2](https://github.com/jimothy-dev/CTD_Grapher_v2).
+A prior version, as a Google Colab notebook: [CTD_Grapher_v2](https://github.com/jimothy-dev/CTD_Grapher_v2).
 
 ## Known limits
 
