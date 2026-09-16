@@ -47,6 +47,4 @@ React, TypeScript, Vite, Plotly.js. Deployed to GitHub Pages by the workflow in 
 
 Simpson, J. (2026). CTD Grapher (v1.0.0). Zenodo. https://doi.org/10.5281/zenodo.22371642
 
-The DOI https://doi.org/10.5281/zenodo.22371639 always points at the latest version. Details in `CITATION.cff`, or use the "Cite this repository" button above.
-
 Licence GPL-3.0. Example casts collected by students of TGEOS 445, Estuarine Field Studies, University of Washington Tacoma, May 2026.
