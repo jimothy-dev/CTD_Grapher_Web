@@ -7,6 +7,7 @@ import { labelFor } from '../lib/labels'
 import { prettyUnits } from '../lib/units'
 import PlotCard from '../components/PlotCard'
 import LabelEditor from '../components/LabelEditor'
+import { useNarrow } from '../lib/media'
 
 const num = (s: string): number | null => { const v = parseFloat(s); return Number.isFinite(v) ? v : null }
 // the variables a cast plot starts with, when the file has them
@@ -16,6 +17,7 @@ export default function Cast() {
   const stations = useStore(s => s.stations)
   const settings = useStore(s => s.settings)
   const setSettings = useStore(s => s.setSettings)
+  const narrow = useNarrow()
   const active = useMemo(() => stations.filter(s => s.active), [stations])
   const chosenId = active.some(s => s.id === settings.castStation) ? settings.castStation : active[0]?.id ?? ''
   const shown = settings.castAll ? active : active.filter(s => s.id === chosenId)
@@ -70,7 +72,7 @@ export default function Cast() {
         <label className="field">depth to (m)<input type="number" value={settings.depthMax} placeholder="bottom" style={{ width: 92 }} onChange={e => setSettings({ depthMax: e.target.value })} /></label>
         <label className="field">grid lines<input type="checkbox" className="switch" checked={settings.profileGrid} onChange={e => setSettings({ profileGrid: e.target.checked })} /></label>
         <label className="field">titles<input type="checkbox" className="switch" checked={settings.profileTitles} onChange={e => setSettings({ profileTitles: e.target.checked })} /></label>
-        {settings.castAll && <label className="field">graphs per row<input type="number" min={1} max={4} step={1} value={perRow} style={{ width: 64 }} aria-label="Graphs per row, 1 to 4" onChange={e => { const v = parseInt(e.target.value, 10); if (v >= 1 && v <= 4) setSettings({ graphsPerRow: v }) }} /></label>}
+        {settings.castAll && !narrow && <label className="field">graphs per row<input type="number" min={1} max={4} step={1} value={perRow} style={{ width: 64 }} aria-label="Graphs per row, 1 to 4" onChange={e => { const v = parseInt(e.target.value, 10); if (v >= 1 && v <= 4) setSettings({ graphsPerRow: v }) }} /></label>}
         <div className="field">graphs{seg(settings.profileGraphTheme, [['light', 'light'], ['dark', 'dark']], v => setSettings({ profileGraphTheme: v }))}</div>
       </div>
       {figures.every(f => !f.result) && <div className="empty">Nothing to draw. Tick a variable, or widen the depth window.</div>}

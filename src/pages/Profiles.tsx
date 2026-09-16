@@ -7,6 +7,7 @@ import { prettyUnits } from '../lib/units'
 import { labelFor } from '../lib/labels'
 import PlotCard from '../components/PlotCard'
 import LabelEditor from '../components/LabelEditor'
+import { useNarrow } from '../lib/media'
 
 const num = (s: string): number | null => { const v = parseFloat(s); return Number.isFinite(v) ? v : null }
 const DEPTH = { name: 'Depth', shorts: [] as string[] }
@@ -17,6 +18,7 @@ export default function Profiles() {
   const stations = useStore(s => s.stations)
   const settings = useStore(s => s.settings)
   const setSettings = useStore(s => s.setSettings)
+  const narrow = useNarrow()
   const active = useMemo(() => stations.filter(s => s.active), [stations])
   const variables = useMemo(() => availableVariables(active.map(s => s.cast)), [active])
   const isOn = (name: string, dflt: boolean) => settings.variables[name] ?? dflt
@@ -136,7 +138,7 @@ export default function Profiles() {
         <label className="field">depth to (m)<input type="number" value={settings.depthMax} placeholder="bottom" style={{ width: 92 }} onChange={e => setSettings({ depthMax: e.target.value })} /></label>
         <label className="field">grid lines<input type="checkbox" className="switch" checked={settings.profileGrid} onChange={e => setSettings({ profileGrid: e.target.checked })} /></label>
         <label className="field">titles<input type="checkbox" className="switch" checked={settings.profileTitles} onChange={e => setSettings({ profileTitles: e.target.checked })} /></label>
-        <label className="field">graphs per row<input type="number" min={1} max={4} step={1} value={perRow} style={{ width: 64 }} aria-label="Graphs per row, 1 to 4" onChange={e => { const v = parseInt(e.target.value, 10); if (v >= 1 && v <= 4) setSettings({ graphsPerRow: v }) }} /></label>
+        {!narrow && <label className="field">graphs per row<input type="number" min={1} max={4} step={1} value={perRow} style={{ width: 64 }} aria-label="Graphs per row, 1 to 4" onChange={e => { const v = parseInt(e.target.value, 10); if (v >= 1 && v <= 4) setSettings({ graphsPerRow: v }) }} /></label>}
         <div className="field">graphs{seg(settings.profileGraphTheme, [['light', 'light'], ['dark', 'dark']], v => setSettings({ profileGraphTheme: v }))}</div>
       </div>
       <div className="card controls" title="Any variable or channel in the files against any other, or against depth, added as an extra graph">
