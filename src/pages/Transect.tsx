@@ -395,13 +395,13 @@ export default function Transect() {
             <div className="field" title="Smooth: the colour varies continuously, with contour lines drawn over it. Banded: one colour between each pair of contours, a filled contour plot.">shading{seg(settings.contourBanded ? 'banded' : 'smooth', [['smooth', 'smooth'], ['banded', 'banded']], v => setSettings({ contourBanded: v === 'banded' }))}</div>
           </div>
           {sections.length > 0 && (
-            <div className="row" style={{ marginTop: 10 }} title="Contour lines are drawn every so many units of the variable, on round values. Leave a box blank for an interval chosen from the colour range.">
+            <div className="row" style={{ marginTop: 10 }} title="Contour lines are drawn every so many units of the variable, on round values. Leave a box blank for an interval chosen from the colour range; any interval goes, down to the resolution of the data.">
               <span className="small muted" style={{ alignSelf: 'center' }}>contour interval:</span>
               {sections.map(({ variable, result }) => {
                 const units = prettyUnits(variables.find(x => x.name === variable)?.units ?? '')
                 return (
                   <label key={variable} className="field">{labelFor(variable, settings.variableLabels)}{units ? ` (${units})` : ''}
-                    <input type="number" min={0} step="any" value={settings.contourInterval[variable] ?? ''} placeholder={result ? `auto: ${result.interval}` : 'auto'} style={{ width: 110 }} aria-label={`Contour interval for ${variable}`}
+                    <input type="number" min={0} step="any" value={settings.contourInterval[variable] ?? ''} placeholder={result ? `auto: ${result.intervalAuto}` : 'auto'} title={result ? `Any interval down to ${result.resolution}, the resolution of the data` : undefined} style={{ width: 110 }} aria-label={`Contour interval for ${variable}`}
                       onChange={e => { const next = { ...settings.contourInterval }; if (e.target.value.trim()) next[variable] = e.target.value; else delete next[variable]; setSettings({ contourInterval: next }) }} />
                   </label>
                 )

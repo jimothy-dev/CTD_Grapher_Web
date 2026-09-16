@@ -79,8 +79,17 @@ export interface SectionResult {
   notes: string[]     // what was used, skipped and why, and any extension past the ends
   warnings: string[]  // things to fix: land on the line, units that differ between stations
   used: number
-  interval: number    // the contour interval drawn, in the variable's units
+  interval: number      // the contour interval drawn, in the variable's units
+  intervalAuto: number  // the one picked from the colour range when none is given
+  resolution: number    // the finest interval the data can carry: 0.0001 for a variable logged to four decimals
   autoTitle: string
+}
+
+// The most decimals any of these values was written with: 10.1234 -> 4.
+function decimalsIn(vals: number[]): number {
+  let d = 0
+  for (const v of vals) { const s = String(v); const i = s.indexOf('.'); if (i >= 0 && s.indexOf('e') < 0) d = Math.max(d, s.length - i - 1) }
+  return d
 }
 
 // Linear resample of a sorted profile onto grid depths: the top value is held
@@ -323,14 +332,29 @@ export function buildSection(stations: SectionStation[], opts: SectionOptions): 
 
   // contour lines every round interval, about 16 across the colour range
   // unless one is given, each on a multiple of it; a bar tick or a line label
-  // carries only the decimals its step needs
+  // carries only the decimals its step needs. Any interval goes, down to the
+  // resolution the data were logged at.
   const auto = niceStep(range[1] - range[0], 16)
+  const dataDecimals = Math.min(6, Math.max(0, ...windowed.map(w => decimalsIn(w.v))))
+  const resolution = 10 ** -dataDecimals
   let interval = opts.interval && opts.interval > 0 ? opts.interval : auto
-  if ((range[1] - range[0]) / interval > 200) { warnings.push(`a contour interval of ${interval} would draw over 200 lines; ${auto} used`); interval = auto }
-  const start = snapUp(range[0], interval)
-  const levels = { start, end: Math.max(snapDown(range[1], interval), start), size: interval, labelformat: `.${decimalsFor(interval)}f` }
-  const labelStyle = { showlabels: true, labelfont: { size: 9, color: '#111' } }
-  const contours = opts.banded
+  if (interval < resolution) { warnings.push(`the data are logged to ${resolution}; contour interval raised to that`); interval = resolution }
+  // bands finer than the graph can show read as continuous colour, so past
+  // about 250 across the colour range the shading is drawn that way and the
+  // lines only where there are data, which keeps a fine interval affordable
+  let lo = Infinity, hi = -Infinity
+  for (const row of z) for (const v of row) if (Number.isFinite(v)) { if (v < lo) lo = v; if (v > hi) hi = v }
+  if (!(lo <= hi)) { lo = range[0]; hi = range[1] }
+  lo = Math.max(lo, range[0]); hi = Math.min(hi, range[1])
+  const count = Math.max(0, Math.floor((snapDown(hi, interval) - snapUp(lo, interval)) / interval) + 1)   // lines where there are data
+  const dense = (range[1] - range[0]) / interval > 250
+  if (dense) notes.push(`${count} contour lines every ${interval} where there are data; bands that fine read as continuous colour, so the shading is continuous`)
+  const [l0, l1] = dense ? [lo, hi] : range
+  const start = snapUp(l0, interval)
+  const levels = { start, end: Math.max(snapDown(l1, interval), start), size: interval, labelformat: `.${decimalsFor(interval)}f` }
+  // lines are labelled while there are few enough to read; past that the colour bar carries the values
+  const labelStyle = { showlabels: count <= 60, labelfont: { size: 9, color: '#111' } }
+  const contours = opts.banded && !dense
     ? { coloring: 'fill' as const, showlines: true, ...levels, ...labelStyle }
     : { coloring: 'heatmap' as const, ...levels, ...labelStyle }
 
@@ -343,7 +367,7 @@ export function buildSection(stations: SectionStation[], opts: SectionOptions): 
     type: 'contour', x: xs, y: ys, z, colorscale, zmin: range[0], zmax: range[1], zauto: false,
     contours, line: { width: 0.5, color: 'rgba(0,0,0,0.35)' }, connectgaps: false, hoverongaps: false,
     colorbar: { title: { text: cbTitle, side: 'right' }, thickness: 14, len: 0.9, outlinewidth: 0, tick0: 0, dtick: tick, tickformat: `.${decimalsFor(tick)}f` },
-    hovertemplate: `%{x:.2f} km<br>%{y:.1f} m<br>${shown}: %{z:.3f} ${unitText}<extra></extra>`,
+    hovertemplate: `%{x:.2f} km<br>%{y:.1f} m<br>${shown}: %{z:.${dataDecimals}f} ${unitText}<extra></extra>`,
   } as Partial<PlotData>, {
     type: 'scatter', mode: 'lines', name: 'seafloor', fill: 'toself', fillcolor: '#000000',
     x: [...px, px[px.length - 1], px[0]], y: [...floor, axisBottom, axisBottom],
@@ -370,5 +394,5 @@ export function buildSection(stations: SectionStation[], opts: SectionOptions): 
     modebar: { remove: ['zoom2d', 'pan2d', 'select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'resetScale2d'] },
   }
   if (used) notes.unshift(`${used} waypoint depth${used === 1 ? '' : 's'} on the seafloor`)
-  return { data, layout, distances: dist, units, notes, warnings, used, interval, autoTitle: `${shown} section` }
+  return { data, layout, distances: dist, units, notes, warnings, used, interval, intervalAuto: auto, resolution, autoTitle: `${shown} section` }
 }

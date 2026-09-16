@@ -113,7 +113,7 @@ interface State {
   dismissNotices: () => void
 }
 
-const SETTINGS_VERSION = 3
+const SETTINGS_VERSION = 4
 const DEFAULT_SETTINGS: Settings = {
   version: SETTINGS_VERSION,
   variableLabels: {},
@@ -121,7 +121,7 @@ const DEFAULT_SETTINGS: Settings = {
   yVariable: 'depth', yInvert: true, yLabelMode: 'side', profileTitles: true, profileTitleText: {},
   profileGraphTheme: effectiveTheme('system'), graphsPerRow: 3, profileGrid: false, customPairs: [],
   castStation: '', castAll: true, castVariables: {}, castTitleText: {},
-  sectionVariables: { Temperature: true }, contourBanded: false, contourInterval: {}, rangeMode: 'fixed', seafloorSource: 'casts',
+  sectionVariables: { Temperature: true }, contourBanded: true, contourInterval: {}, rangeMode: 'fixed', seafloorSource: 'casts',
   palettes: {}, showMap: true, mapStyle: 'ocean', sectionTitles: true, sectionTitleText: {}, sectionGraphTheme: effectiveTheme('system'),
   colorbarName: true, theme: 'system',
 }
@@ -212,6 +212,8 @@ function load(): { stations: Station[]; transect: TransectState; settings: Setti
     if ((saved.version ?? 1) < 2) { delete saved.castAll; delete saved.profileGrid }
     // 3: the contour-steps slider became a smooth/banded switch and an interval per variable
     if ((saved.version ?? 1) < 3) { const old = saved as unknown as Record<string, unknown>; if (typeof old.contourSteps === 'number' && old.contourSteps > 0) saved.contourBanded = true; delete old.contourSteps }
+    // 4: banded shading became the default
+    if ((saved.version ?? 1) < 4) delete saved.contourBanded
     return { stations, transect: reconcile(s.transect, stations), settings: { ...DEFAULT_SETTINGS, ...saved, version: SETTINGS_VERSION }, notices }
   } catch { return null }
 }
