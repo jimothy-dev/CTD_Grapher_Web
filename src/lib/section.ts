@@ -263,11 +263,18 @@ export function buildSection(stations: SectionStation[], opts: SectionOptions): 
   if (xMax > dist[last]) notes.push(`extended ${(xMax - dist[last]).toFixed(2)} km beyond ${stations[last].label}, colors there repeat that station`)
 
   const top = dmin ?? 0            // the axis starts at the surface; each cast's top value is held up to it
-  const bot = dmax ?? Math.max(Math.max(...bottoms), deepestFloor)
-  const [nx, ny] = opts.grid ?? [240, 200]
+  // the depth grid's spacing comes from the casts alone, so the field above
+  // the seafloor is the same whichever seafloor source is chosen: a floor
+  // deeper than every cast adds levels below, it does not stretch the grid
+  const castBot = dmax ?? Math.max(...bottoms)
+  const bot = dmax ?? Math.max(castBot, deepestFloor)
+  const [nx, ny0] = opts.grid ?? [240, 200]
   const xs = Array.from({ length: nx }, (_, i) => xMin + (xMax - xMin) * i / (nx - 1))
   const surface = Math.max(0, top)
-  const ys = Array.from({ length: ny }, (_, j) => surface + (bot - surface) * j / (ny - 1))
+  let dy = Math.max(castBot - surface, 1e-6) / (ny0 - 1)
+  let ny = Math.ceil((bot - surface) / dy - 1e-9) + 1
+  if (ny > ny0 * 4) { ny = ny0 * 4; dy = (bot - surface) / (ny - 1) }
+  const ys = Array.from({ length: ny }, (_, j) => (j === ny - 1 ? bot : surface + dy * j))
 
   const columns = windowed.map(w => resample(w.z, w.v, ys))
   // horizontal pass at every depth, held constant past the end stations
@@ -303,7 +310,7 @@ export function buildSection(stations: SectionStation[], opts: SectionOptions): 
   // deepest polygon vertex within a cell of it, so a vertex that falls
   // between columns never leaves a sliver of background above the black;
   // the blank starts a cell and a half under that.
-  const dy = (bot - surface) / (ny - 1), dx = nx > 1 ? (xMax - xMin) / (nx - 1) : 0
+  const dx = nx > 1 ? (xMax - xMin) / (nx - 1) : 0
   const floorAtX = xs.map(x => {
     let m = floorAt(x)
     for (const [vx, vz] of floorPts) { if (vx < x - dx) continue; if (vx > x + dx) break; m = Math.max(m, Math.min(Math.max(vz, surface), bot)) }
