@@ -263,18 +263,16 @@ export function buildSection(stations: SectionStation[], opts: SectionOptions): 
   if (xMax > dist[last]) notes.push(`extended ${(xMax - dist[last]).toFixed(2)} km beyond ${stations[last].label}, colors there repeat that station`)
 
   const top = dmin ?? 0            // the axis starts at the surface; each cast's top value is held up to it
-  // the depth grid's spacing comes from the casts alone, so the field above
-  // the seafloor is the same whichever seafloor source is chosen: a floor
-  // deeper than every cast adds levels below, it does not stretch the grid
-  const castBot = dmax ?? Math.max(...bottoms)
-  const bot = dmax ?? Math.max(castBot, deepestFloor)
-  const [nx, ny0] = opts.grid ?? [240, 200]
+  // the graph's depth and its grid come from the casts and the waypoint
+  // depths alone, so switching the seafloor source moves nothing on it: a
+  // depth map deeper than those is clipped at the bottom and reported
+  const bot = dmax ?? Math.max(...bottoms, ...waypointPts.map(p => p[1]))
+  const [nx, ny] = opts.grid ?? [240, 200]
   const xs = Array.from({ length: nx }, (_, i) => xMin + (xMax - xMin) * i / (nx - 1))
   const surface = Math.max(0, top)
-  let dy = Math.max(castBot - surface, 1e-6) / (ny0 - 1)
-  let ny = Math.ceil((bot - surface) / dy - 1e-9) + 1
-  if (ny > ny0 * 4) { ny = ny0 * 4; dy = (bot - surface) / (ny - 1) }
-  const ys = Array.from({ length: ny }, (_, j) => (j === ny - 1 ? bot : surface + dy * j))
+  const dy = Math.max(bot - surface, 1e-6) / (ny - 1)
+  const ys = Array.from({ length: ny }, (_, j) => surface + dy * j)
+  if (dmax === null && deepestFloor > bot + 0.5) notes.push(`seafloor from ${opts.seafloorName ?? 'the depth map'} reaches ${deepestFloor.toFixed(0)} m, below the deepest cast; the graph stops at ${bot.toFixed(0)} m unless you set "depth to"`)
 
   const columns = windowed.map(w => resample(w.z, w.v, ys))
   // horizontal pass at every depth, held constant past the end stations
