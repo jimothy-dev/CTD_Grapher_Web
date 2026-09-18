@@ -17,7 +17,39 @@
     <title>CTD Grapher</title>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <noscript>
+        <h1>CTD Grapher</h1>
+        <p>
+          Depth profiles and transect sections from Sea-Bird <code>.cnv</code> and OpenCTD <code>.csv</code> CTD casts, drawn in the browser.
+          Nothing to install; files never leave your computer. Single-station cast plots, multi-station depth profiles, and
+          along-transect sections with the seafloor from your casts or from NOAA NCEI and EMODnet bathymetry.
+          This app needs JavaScript to run.
+        </p>
+        <p>
+          Source code: <a href="https://github.com/jimothy-dev/CTD_Grapher_Web">github.com/jimothy-dev/CTD_Grapher_Web</a>.
+          Cite: <a href="https://doi.org/10.5281/zenodo.22371639">doi.org/10.5281/zenodo.22371639</a>.
+          By James Simpson.
+        </p>
+      </noscript>
+    </div>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "CTD Grapher",
+        "url": "https://jimothy-dev.github.io/CTD_Grapher_Web/",
+        "applicationCategory": "Scientific",
+        "operatingSystem": "Web browser",
+        "description": "Depth profiles and transect sections from Sea-Bird .cnv and OpenCTD .csv CTD casts, drawn in the browser. Nothing to install; files never leave your computer.",
+        "author": { "@type": "Person", "name": "James Simpson", "url": "https://github.com/jimothy-dev" },
+        "codeRepository": "https://github.com/jimothy-dev/CTD_Grapher_Web",
+        "identifier": "https://doi.org/10.5281/zenodo.22371639",
+        "license": "https://www.gnu.org/licenses/gpl-3.0.html",
+        "isAccessibleForFree": true,
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+      }
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

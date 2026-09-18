@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://jimothy-dev.github.io/CTD_Grapher_Web/sitemap.xml
