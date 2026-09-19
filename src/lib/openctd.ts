@@ -5,10 +5,11 @@
 //   Date,Time,Conductivity,Temperature,Pressure          (earlier boards)
 // with absolute pressure in mbar from the MS5803, temperature in deg C and
 // conductivity in uS/cm from the Atlas EZO circuit. Nothing is derived on the
-// instrument, so the reading is turned into a cast the way OpenCTD's own
-// conversion template does (gauge pressure from a sea-level constant,
-// PSS-78 salinity with a 42914 uS/cm reference), with the standard depth and
-// density formulas on top.
+// instrument, so each reading is turned into a cast: gauge pressure from the
+// lowest reading when the logger saw air (950 to 1060 mbar), else standard
+// atmosphere; depth by the UNESCO formula at the given latitude; PSS-78
+// salinity with the pressure term (OpenCTD's own template drops it and
+// subtracts a fixed 1010 mbar); sigma-t by EOS-80.
 import type { Cast, Column } from './cnv'
 import { depthFromPressure, pss78Salinity, sigmaT } from './seawater'
 
