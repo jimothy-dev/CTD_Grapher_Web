@@ -272,7 +272,7 @@ export function buildSection(stations: SectionStation[], opts: SectionOptions): 
   const surface = Math.max(0, top)
   const dy = Math.max(bot - surface, 1e-6) / (ny - 1)
   const ys = Array.from({ length: ny }, (_, j) => surface + dy * j)
-  if (dmax === null && deepestFloor > bot + 0.5) notes.push(`seafloor from ${opts.seafloorName ?? 'the depth map'} reaches ${deepestFloor.toFixed(0)} m, below the deepest cast; the graph stops at ${bot.toFixed(0)} m unless you set "depth to"`)
+  if (dmax === null && deepestFloor > bot + 0.5) notes.push(`seafloor from ${opts.seafloorName ?? 'the depth map'} reaches ${deepestFloor.toFixed(0)} m, below the deepest cast; the graph stops at ${bot.toFixed(0)} m`)
 
   const columns = windowed.map(w => resample(w.z, w.v, ys))
   // horizontal pass at every depth, held constant past the end stations

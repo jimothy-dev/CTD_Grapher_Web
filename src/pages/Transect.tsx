@@ -134,8 +134,6 @@ export default function Transect() {
   const unplaced = orderIds.filter(id => (transect.on[id] ?? true) && !live(id)).map(id => byId[id].name)
   const route = chosen.length > 1 ? routeDistances(chosen) : null
 
-  let dmin = num(settings.depthMin), dmax = num(settings.depthMax)
-  if (dmin !== null && dmax !== null && dmin > dmax) [dmin, dmax] = [dmax, dmin]
   const isOn = (name: string) => settings.sectionVariables[name] ?? false
 
   // ---- surveyed seafloor along the routed line, fetched when the route or the source changes
@@ -168,7 +166,7 @@ export default function Transect() {
     return {
       variable: v.name,
       result: buildSection(chosen, {
-        variable: v.name, label: labelFor(v.name, settings.variableLabels), shorts: v.shorts, depthMin: dmin, depthMax: dmax, interval: num(settings.contourInterval[v.name] ?? ''), banded: settings.contourBanded,
+        variable: v.name, label: labelFor(v.name, settings.variableLabels), shorts: v.shorts, interval: num(settings.contourInterval[v.name] ?? ''), banded: settings.contourBanded,
         colorscale: pal && pal.clr.stops.length ? pal.clr.stops : null,
         range: levels ? [levels[0], levels[levels.length - 1]] : settings.rangeMode === 'auto' ? 'auto' : null,
         colorbarName: settings.colorbarName,
@@ -177,7 +175,7 @@ export default function Transect() {
     }
   }),
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  [transect, stations, variables, settings, dmin, dmax, samples])
+  [transect, stations, variables, settings, samples])
 
   const placed = active.filter(s => s.lat !== null && s.lon !== null)
   // the view the user last panned or zoomed to, kept while the same stations are on the map
@@ -390,8 +388,6 @@ export default function Transect() {
           </div>
           <div style={{ marginBottom: 10 }}><LabelEditor items={variables.filter(v => isOn(v.name)).map(v => ({ key: v.name, caption: v.name }))} /></div>
           <div className="row">
-            <label className="field">depth from (m)<input type="number" value={settings.depthMin} placeholder="surface" style={{ width: 88 }} onChange={e => setSettings({ depthMin: e.target.value })} /></label>
-            <label className="field">depth to (m)<input type="number" value={settings.depthMax} placeholder="bottom" style={{ width: 88 }} onChange={e => setSettings({ depthMax: e.target.value })} /></label>
             <div className="field" title="Smooth: the colour varies continuously, with contour lines drawn over it. Banded: one colour between each pair of contours, a filled contour plot.">shading{seg(settings.contourBanded ? 'banded' : 'smooth', [['smooth', 'smooth'], ['banded', 'banded']], v => setSettings({ contourBanded: v === 'banded' }))}</div>
           </div>
           {sections.length > 0 && (
