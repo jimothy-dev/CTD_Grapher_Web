@@ -205,24 +205,48 @@ export function profile(cast: Cast, shorts: string[]): Profile | null {
 }
 
 // Keep the downcast only: cut at the deepest reading, then keep samples that
-// go monotonically deeper. A display fix for raw casts, not Sea-Bird
-// processing, and only applied when the header shows no loopedit step. A
-// record that is not a cast at all (a moored instrument logging at one depth)
-// would be gutted by this, so it is left alone when the cut would keep under
-// a fifth of the rows; `timeSeries` says so.
+// go deeper. A display fix for raw casts, not Sea-Bird processing, and only
+// applied when the header shows no loopedit step.
+//
+// Whether a sample goes deeper is judged on a five-point running median of
+// the depth, because a raw pressure sensor is noisy: an OpenCTD wanders a
+// few tenths of a metre between readings, and testing the raw numbers throws
+// away good samples that only dipped because of that noise.
+//
+// A record that is not a cast at all (a moored instrument logging at one
+// depth) would be gutted by this, so it is left alone and `timeSeries` says
+// so. That is judged on the depths it visited rather than on how many rows
+// survive the cut: a real cast starts near the surface and reaches depth,
+// while a mooring barely changes depth and never comes near the surface.
+// Counting rows misreads a noisy cast as a mooring.
 export function downcastOnly(cast: Cast): { cast: Cast; dropped: number; timeSeries?: boolean } {
   const d = depthColumn(cast)
   if (!d) return { cast, dropped: 0 }
   const z = cast.data[d.col.index]
-  let deepest = 0
-  for (let i = 1; i < z.length; i++) if (z[i] > z[deepest]) deepest = i
+  let deepest = 0, zMin = Infinity, zMax = -Infinity
+  for (let i = 0; i < z.length; i++) {
+    if (!Number.isFinite(z[i])) continue
+    if (z[i] > z[deepest]) deepest = i
+    if (z[i] < zMin) zMin = z[i]
+    if (z[i] > zMax) zMax = z[i]
+  }
+  if (!(zMax > zMin)) return { cast, dropped: 0 }
+  if (cast.nrows >= 50 && (zMax - zMin < 2 || zMin > zMax * 0.2)) return { cast, dropped: 0, timeSeries: true }
+  const smooth = (i: number) => {
+    const w: number[] = []
+    for (let k = Math.max(0, i - 2); k <= Math.min(z.length - 1, i + 2); k++) if (Number.isFinite(z[k])) w.push(z[k])
+    if (!w.length) return NaN
+    w.sort((a, b) => a - b)
+    return w[Math.floor(w.length / 2)]
+  }
   const keep: number[] = []
   let running = -Infinity
   for (let i = 0; i <= deepest; i++) {
-    if (Number.isFinite(z[i]) && z[i] >= running) { keep.push(i); running = z[i] }
+    const s = smooth(i)
+    if (Number.isFinite(z[i]) && Number.isFinite(s) && s >= running) { keep.push(i); running = s }
   }
   if (keep.length === cast.nrows) return { cast, dropped: 0 }
-  if (cast.nrows >= 50 && keep.length < cast.nrows * 0.2) return { cast, dropped: 0, timeSeries: true }
+  if (keep.length < 5) return { cast, dropped: 0, timeSeries: true }
   const data = cast.data.map(col => Float64Array.from(keep.map(i => col[i])))
   return { cast: { ...cast, data, nrows: keep.length }, dropped: cast.nrows - keep.length }
 }

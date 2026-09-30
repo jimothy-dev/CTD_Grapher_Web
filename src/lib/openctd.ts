@@ -3,7 +3,9 @@
 //   Date, Time, Pressure, Temp, Conductivity            (Rev 8)
 //   Date, Time,Pressure,Temp A,Temp B,Temp C,Conductivity   (Rev 7, three thermistors)
 //   Date,Time,Conductivity,Temperature,Pressure          (earlier boards)
-// with absolute pressure in mbar from the MS5803, temperature in deg C and
+// or with no header line at all, which is what the loggers in the field
+// write and what OpenCTD's own spreadsheet expects pasted into it. Absolute
+// pressure comes in mbar from the MS5803, temperature in deg C and
 // conductivity in uS/cm from the Atlas EZO circuit. Nothing is derived on the
 // instrument, so each reading is turned into a cast: gauge pressure from the
 // lowest reading when the logger saw air (950 to 1060 mbar), else standard
@@ -14,25 +16,63 @@ import type { Cast, Column } from './cnv'
 import { depthFromPressure, pss78Salinity, sigmaT } from './seawater'
 
 export function isOpenCtd(text: string): boolean {
-  const first = text.slice(0, 600).split(/\r?\n/).find(l => l.trim()) ?? ''
-  const h = first.toLowerCase()
-  return h.includes(',') && h.includes('date') && h.includes('time') && h.includes('pressure') && h.includes('conductivity')
+  const lines = text.split(/\r?\n/).filter(l => l.trim())
+  if (!lines.length) return false
+  const h = lines[0].toLowerCase()
+  if (h.includes(',') && h.includes('date') && h.includes('time') && h.includes('pressure') && h.includes('conductivity')) return true
+  return headerlessShape(lines) !== null
 }
 
 const median = (v: number[]) => { const s = [...v].sort((a, b) => a - b); return s.length ? s[Math.floor(s.length / 2)] : NaN }
 
+// Some loggers write those same columns with no header at all: the files
+// OpenCTD's own spreadsheet expects pasted into its columns A to G. A row of
+// "date, time, pressure, one to three temperatures, conductivity", repeated
+// at the same width with plausible values, is specific enough to read on its
+// own.
+const DATE = /^\d{1,4}[/-]\d{1,2}[/-]\d{1,4}$/
+const CLOCK = /^\d{1,2}:\d{2}(:\d{2})?(\.\d+)?$/
+interface Shape { ncol: number; iDate: number; iTime: number; iP: number; iT: number[]; iC: number }
+function headerlessShape(lines: string[]): Shape | null {
+  const rows = lines.slice(0, 20).map(l => l.split(',').map(x => x.trim()))
+  const ncol = rows[0].length
+  if (rows.length < 3 || ncol < 5 || ncol > 8 || rows.some(r => r.length !== ncol)) return null
+  if (!rows.every(r => DATE.test(r[0]) && CLOCK.test(r[1]))) return null
+  const nums = rows.map(r => r.slice(2).map(Number))
+  if (!nums.every(r => r.every(v => Number.isFinite(v)))) return null
+  const col = (k: number) => median(nums.map(r => r[k]))
+  if (!(col(0) > 500 && col(0) < 20000)) return null   // absolute pressure in mbar: about 1013 in air
+  const iT: number[] = []
+  for (let k = 1; k <= ncol - 4; k++) { const t = col(k); if (!(t > -5 && t < 60)) return null; iT.push(k + 2) }
+  if (!iT.length) return null
+  const ec = col(ncol - 3)                             // conductivity in uS/cm, or mS/cm on an older board
+  if (!(ec >= 0 && ec < 200000)) return null
+  return { ncol, iDate: 0, iTime: 1, iP: 2, iT, iC: ncol - 1 }
+}
+
 export function parseOpenCtd(text: string, filename: string, latitudeDeg = 45): { cast: Cast; notes: string[] } {
   const lines = text.split(/\r?\n/).filter(l => l.trim())
+  const notes: string[] = []
   const header = lines[0].split(',').map(s => s.trim().toLowerCase())
-  const iDate = header.indexOf('date'), iTime = header.indexOf('time')
-  const iP = header.findIndex(h => h.startsWith('pressure')), iC = header.findIndex(h => h.startsWith('conduct'))
-  const iT = header.map((h, i) => (h.startsWith('temp') ? i : -1)).filter(i => i >= 0)
-  if (iP < 0 || iC < 0 || !iT.length) throw new Error(`${filename}: OpenCTD header lacks a pressure, temperature or conductivity column`)
+  const headed = header.some(h => h.startsWith('pressure')) && header.some(h => h.startsWith('conduct'))
+  let iDate: number, iTime: number, iP: number, iC: number, iT: number[], ncol: number, firstRow: number
+  if (headed) {
+    iDate = header.indexOf('date'); iTime = header.indexOf('time')
+    iP = header.findIndex(h => h.startsWith('pressure')); iC = header.findIndex(h => h.startsWith('conduct'))
+    iT = header.map((h, i) => (h.startsWith('temp') ? i : -1)).filter(i => i >= 0)
+    if (iP < 0 || iC < 0 || !iT.length) throw new Error(`${filename}: OpenCTD header lacks a pressure, temperature or conductivity column`)
+    ncol = header.length; firstRow = 1
+  } else {
+    const shape = headerlessShape(lines)
+    if (!shape) throw new Error(`${filename}: OpenCTD header lacks a pressure, temperature or conductivity column`)
+    ;({ ncol, iDate, iTime, iP, iC, iT } = shape); firstRow = 0
+    notes.push(`no header row, so the columns were read in the order the logger writes them: date, time, pressure, ${iT.length} temperature${iT.length === 1 ? '' : 's'}, conductivity`)
+  }
 
   const pMbar: number[] = [], tC: number[] = [], ecRaw: number[] = [], when: string[] = []
-  for (const line of lines.slice(1)) {
+  for (const line of lines.slice(firstRow)) {
     const p = line.split(',').map(s => s.trim())
-    if (p.length < header.length) continue
+    if (p.length < ncol) continue
     const pressure = parseFloat(p[iP]), ec = parseFloat(p[iC])
     // DS18B20 thermistors report -127 or 85 when they fail; leave those out of the mean
     const temps = iT.map(i => parseFloat(p[i])).filter(v => Number.isFinite(v) && v > -5 && v < 60 && v !== 85)
@@ -42,7 +82,6 @@ export function parseOpenCtd(text: string, filename: string, latitudeDeg = 45): 
   }
   if (pMbar.length < 3) throw new Error(`${filename}: no OpenCTD data rows found`)
 
-  const notes: string[] = []
   // conductivity: uS/cm from the EZO circuit unless the numbers are clearly mS/cm already
   const ecWet = ecRaw.filter(v => v > 100)
   const toMs = median(ecWet.length ? ecWet : ecRaw) > 200 ? 1e-3 : 1
