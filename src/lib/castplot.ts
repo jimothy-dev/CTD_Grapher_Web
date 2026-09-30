@@ -15,6 +15,8 @@ export interface CastPlotOptions {
   depthMax: number | null
   lineShape: 'spline' | 'linear'
   showGrid: boolean
+  showPoints: boolean   // a dot on every reading, on top of the line
+  pointSize: number
 }
 export interface CastPlotResult { data: Partial<PlotData>[]; layout: Partial<Layout>; missing: string[]; height: number }
 
@@ -61,8 +63,9 @@ export function buildCastPlot(cast: Cast, o: CastPlotOptions): CastPlotResult | 
     for (let t = r0; t <= r1 + step * 1e-6; t += step) tickvals.push(+t.toFixed(decimals + 2))
     axes.push({ label: labelWithUnits(v.label, col.units), color, range: [r0, r1], tickvals, ticktext: tickvals.map(t => t.toFixed(decimals)) })
     data.push({
-      type: 'scatter', mode: 'lines', name: v.label, x: pts.map(p => p[0]), y: pts.map(p => p[1]),
+      type: 'scatter', mode: o.showPoints ? 'lines+markers' : 'lines', name: v.label, x: pts.map(p => p[0]), y: pts.map(p => p[1]),
       xaxis: n === 0 ? 'x' : `x${n + 1}`, line: { color, width: 2, shape: o.lineShape, smoothing: 0.6 },
+      marker: { color, size: o.pointSize },
       hovertemplate: `%{x:.3f} ${prettyUnits(col.units)}<extra>${v.label}</extra>`,
     } as Partial<PlotData>)
   })

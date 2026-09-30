@@ -19,6 +19,8 @@ export interface ProfileOptions {
   yInvert: boolean
   yLabelMode: YLabelMode
   showGrid: boolean
+  showPoints: boolean   // a dot on every reading, on top of the line
+  pointSize: number
 }
 export interface ProfileResult {
   variable: string
@@ -64,8 +66,9 @@ export function buildProfile(stations: ProfileStation[], o: ProfileOptions): Pro
     if (yIsDepth) pts.sort((a, b) => a[1] - b[1])
     deepestSeen = Math.max(deepestSeen, ...pts.map(p => p[2]))
     data.push({
-      type: 'scatter', mode: 'lines', name: s.name, x: pts.map(p => p[0]), y: pts.map(p => p[1]),
+      type: 'scatter', mode: o.showPoints ? 'lines+markers' : 'lines', name: s.name, x: pts.map(p => p[0]), y: pts.map(p => p[1]),
       line: { color: s.color, width: 2, shape: o.lineShape, smoothing: 0.6 },
+      marker: { color: s.color, size: o.pointSize },
       hovertemplate: `<b>${s.name}</b><br>${xName}: %{x:.3f}<br>${yLabelBase}: %{y:.2f}<extra></extra>`,
     } as Partial<PlotData>)
   }

@@ -33,10 +33,11 @@ export default function Cast() {
     result: buildCastPlot(s.cast, {
       variables: variables.filter(v => isOn(v.name)).map(v => ({ name: v.name, shorts: v.shorts, label: named(v.name) })),
       depthMin: dmin, depthMax: dmax, lineShape: settings.lineShape, showGrid: settings.profileGrid,
+      showPoints: settings.showPoints, pointSize: settings.pointSize,
     }),
   })),
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  [shown, variables, settings.castVariables, settings.variableLabels, dmin, dmax, settings.lineShape, settings.profileGrid])
+  [shown, variables, settings.castVariables, settings.variableLabels, dmin, dmax, settings.lineShape, settings.profileGrid, settings.showPoints, settings.pointSize])
 
   if (!active.length) return <div className="empty">No active stations. <Link to="/">Add or switch some on.</Link></div>
 
@@ -71,6 +72,8 @@ export default function Cast() {
         <label className="field">depth from (m)<input type="number" value={settings.depthMin} placeholder="surface" style={{ width: 92 }} onChange={e => setSettings({ depthMin: e.target.value })} /></label>
         <label className="field">depth to (m)<input type="number" value={settings.depthMax} placeholder="bottom" style={{ width: 92 }} onChange={e => setSettings({ depthMax: e.target.value })} /></label>
         <label className="field">grid lines<input type="checkbox" className="switch" checked={settings.profileGrid} onChange={e => setSettings({ profileGrid: e.target.checked })} /></label>
+        <label className="field" title="A dot on every reading, drawn on top of the line, so you can see where the instrument actually sampled.">data points<input type="checkbox" className="switch" checked={settings.showPoints} onChange={e => setSettings({ showPoints: e.target.checked })} /></label>
+        {settings.showPoints && <label className="field">point size<input type="number" min={1} max={12} step={1} value={settings.pointSize} style={{ width: 64 }} aria-label="Point size, 1 to 12" onChange={e => { const v = parseInt(e.target.value, 10); if (v >= 1 && v <= 12) setSettings({ pointSize: v }) }} /></label>}
         <label className="field">titles<input type="checkbox" className="switch" checked={settings.profileTitles} onChange={e => setSettings({ profileTitles: e.target.checked })} /></label>
         {settings.castAll && !narrow && <label className="field">graphs per row<input type="number" min={1} max={4} step={1} value={perRow} style={{ width: 64 }} aria-label="Graphs per row, 1 to 4" onChange={e => { const v = parseInt(e.target.value, 10); if (v >= 1 && v <= 4) setSettings({ graphsPerRow: v }) }} /></label>}
         <div className="field">graphs{seg(settings.profileGraphTheme, [['light', 'light'], ['dark', 'dark']], v => setSettings({ profileGraphTheme: v }))}</div>

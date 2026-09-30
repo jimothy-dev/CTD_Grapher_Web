@@ -69,6 +69,8 @@ export interface Settings {
   profileGraphTheme: GraphTheme
   graphsPerRow: number            // 1 to 4
   profileGrid: boolean            // grid lines inside the profile graphs
+  showPoints: boolean             // a dot on every reading, on the profile and cast graphs
+  pointSize: number               // 1 to 12
   // extra graphs of one variable against another (or depth), e.g. Temperature vs Salinity
   customPairs: { x: string; y: string }[]
   // cast page: one station, every variable on its own x scale
@@ -119,7 +121,7 @@ const DEFAULT_SETTINGS: Settings = {
   variableLabels: {},
   variables: {}, depthMin: '', depthMax: '', lineShape: 'spline', legendPos: 'right',
   yVariable: 'depth', yInvert: true, yLabelMode: 'side', profileTitles: true, profileTitleText: {},
-  profileGraphTheme: effectiveTheme('system'), graphsPerRow: 3, profileGrid: false, customPairs: [],
+  profileGraphTheme: effectiveTheme('system'), graphsPerRow: 3, profileGrid: false, showPoints: false, pointSize: 4, customPairs: [],
   castStation: '', castAll: true, castVariables: {}, castTitleText: {},
   sectionVariables: { Temperature: true }, contourBanded: true, contourInterval: {}, rangeMode: 'fixed', seafloorSource: 'casts',
   palettes: {}, showMap: true, mapStyle: 'ocean', sectionTitles: true, sectionTitleText: {}, sectionGraphTheme: effectiveTheme('system'),
