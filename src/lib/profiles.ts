@@ -38,6 +38,7 @@ export function buildProfile(stations: ProfileStation[], o: ProfileOptions): Pro
   const pressureFor: string[] = [], convertedX: string[] = [], convertedY: string[] = []
   const xName = o.label ?? o.variable
   let xUnits = '', yUnits = '', yLabelBase = o.y.label ?? o.y.name, deepestSeen = 0
+  let xLo = Infinity, xHi = -Infinity, yLo = Infinity, yHi = -Infinity
   const yIsDepth = o.y.name === 'Depth'
   for (const s of stations) {
     const xcol = findColumn(s.cast, o.shorts)
@@ -64,11 +65,19 @@ export function buildProfile(stations: ProfileStation[], o: ProfileOptions): Pro
     }
     if (!pts.length) { missing.push(s.name); continue }
     if (yIsDepth) pts.sort((a, b) => a[1] - b[1])
-    deepestSeen = Math.max(deepestSeen, ...pts.map(p => p[2]))
+    // a loop, not Math.max(...pts): spreading a long cast overflows the stack
+    for (const p of pts) {
+      if (p[2] > deepestSeen) deepestSeen = p[2]
+      if (p[0] < xLo) xLo = p[0]; if (p[0] > xHi) xHi = p[0]
+      if (p[1] < yLo) yLo = p[1]; if (p[1] > yHi) yHi = p[1]
+    }
     data.push({
       type: 'scatter', mode: o.showPoints ? 'lines+markers' : 'lines', name: s.name, x: pts.map(p => p[0]), y: pts.map(p => p[1]),
       line: { color: s.color, width: 2, shape: o.lineShape, smoothing: 0.6 },
       marker: { color: s.color, size: o.pointSize },
+      // dots at the ends draw whole instead of being sliced by the axis,
+      // which lets the range stay exactly on the data
+      cliponaxis: false,
       hovertemplate: `<b>${s.name}</b><br>${xName}: %{x:.3f}<br>${yLabelBase}: %{y:.2f}<extra></extra>`,
     } as Partial<PlotData>)
   }
@@ -88,6 +97,16 @@ export function buildProfile(stations: ProfileStation[], o: ProfileOptions): Pro
   const margin = { l: o.legendPos === 'left' ? 170 : 64, r: o.legendPos === 'right' ? 20 : 20, t: xTop ? 80 : 40, b: xTop ? (o.legendPos === 'bottom' ? 80 : 40) : (o.legendPos === 'bottom' ? 110 : 70) }
   if (o.yLabelMode === 'top') margin.t += 18
 
+  // The axes sit on the data, not on what is drawn over it. Left automatic,
+  // Plotly widens a range to fit the marker radius, so switching data points
+  // on would rescale the graph; pinning the range keeps it the same either
+  // way. A channel that never changes gets a little room so it has an axis.
+  const span = (lo: number, hi: number): [number, number] => {
+    if (!Number.isFinite(lo) || !Number.isFinite(hi)) return [0, 1]
+    if (hi > lo) return [lo, hi]
+    const room = Math.abs(lo) > 1e-9 ? Math.abs(lo) * 0.05 : 0.5
+    return [lo - room, hi + room]
+  }
   const yaxis: Partial<Layout['yaxis']> = {
     title: o.yLabelMode === 'side' ? { text: yLabel, standoff: 8 } : { text: '' },
     autorange: invert ? 'reversed' : true, zeroline: false, ticks: 'outside', ticklen: 4, showline: true, linecolor: '#888', tickcolor: '#888',
@@ -98,6 +117,10 @@ export function buildProfile(stations: ProfileStation[], o: ProfileOptions): Pro
     const top = o.depthMin ?? 0, bot = o.depthMax ?? deepestSeen * 1.02
     yaxis.range = invert ? [bot, top] : [top, bot]
     yaxis.autorange = false
+  } else {
+    const [lo, hi] = span(yLo, yHi)
+    yaxis.range = invert ? [hi, lo] : [lo, hi]
+    yaxis.autorange = false
   }
   const legend: Partial<Layout['legend']> = o.legendPos === 'bottom'
     ? { orientation: 'h', y: xTop ? -0.08 : -0.22, x: 0, xanchor: 'left', yanchor: 'top' }
@@ -105,7 +128,7 @@ export function buildProfile(stations: ProfileStation[], o: ProfileOptions): Pro
       ? { orientation: 'v', x: -0.2, xanchor: 'right', y: 1, yanchor: 'top' }
       : { orientation: 'v', x: 1.02, xanchor: 'left', y: 1, yanchor: 'top' }
   const layout: Partial<Layout> = {
-    xaxis: { title: { text: xLabel, standoff: 8 }, side: xTop ? 'top' : 'bottom', zeroline: false, ticks: 'outside', ticklen: 4, showline: true, linecolor: '#888', tickcolor: '#888', showgrid: o.showGrid },
+    xaxis: { title: { text: xLabel, standoff: 8 }, side: xTop ? 'top' : 'bottom', range: span(xLo, xHi), autorange: false, zeroline: false, ticks: 'outside', ticklen: 4, showline: true, linecolor: '#888', tickcolor: '#888', showgrid: o.showGrid },
     yaxis, legend, margin, hovermode: 'closest', showlegend: true,
     annotations: o.yLabelMode === 'top'
       ? [{ text: yLabel, xref: 'paper', yref: 'paper', x: 0, y: 1, xanchor: 'right', yanchor: 'bottom', xshift: -6, yshift: xTop ? 30 : 6, showarrow: false, font: { size: 12 } }]
