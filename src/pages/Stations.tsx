@@ -1,6 +1,7 @@
 import { useRef, useState, type DragEvent, type ChangeEvent } from 'react'
 import { useStore } from '../store'
 import { formatCoordinate } from '../lib/geo'
+import Instrument from '../components/Instrument'
 
 const EXAMPLE_BASE = 'https://raw.githubusercontent.com/jimothy-dev/CTD_Grapher_v2/main/example_data/'
 const EXAMPLES = ['Station_11.cnv', 'Station_12.cnv', 'Station_15.cnv', 'Station_16.cnv', 'Station_17.cnv']
@@ -11,6 +12,8 @@ const SAMPLES = ['NCEI_GulfOfMexico_2010_SBE9.cnv', 'OOI_Pioneer_2015_SBE9.cnv',
 export default function Stations() {
   const stations = useStore(s => s.stations)
   const notices = useStore(s => s.notices)
+  const openCtdBy = useStore(s => s.settings.openCtdBy)
+  const anyOpenCtd = stations.some(s => s.info)
   const { addFiles, removeStation, rename, setActive, setAllActive, setPosition, setAllHemisphere, dismissNotices } = useStore()
   const [over, setOver] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -87,6 +90,16 @@ export default function Stations() {
               </span>
             </div>
           </div>
+          {anyOpenCtd && (
+            <details className="instrument-row all">
+              <summary>OpenCTD instrument, for every such cast</summary>
+              <p className="muted small" style={{ margin: '0 0 8px' }}>
+                These are the numbers your log file does not carry. Set them once for the unit you deployed; any station can
+                override them under its own <span className="mono">instrument</span>.
+              </p>
+              <Instrument target="*" />
+            </details>
+          )}
           <div className="stations">
             {stations.map(s => {
               const badLat = s.latText.trim() !== '' && s.lat === null
@@ -113,6 +126,12 @@ export default function Stations() {
                     <label className="field" style={{ alignItems: 'center' }}>active<input type="checkbox" className="switch" checked={s.active} onChange={e => setActive(s.id, e.target.checked)} aria-label={`${s.name} active`} /></label>
                     <button className="remove" onClick={() => removeStation(s.id)} aria-label={`Remove ${s.name}`}>remove</button>
                   </div>
+                  {s.info && (
+                    <details className="instrument-row">
+                      <summary>instrument{Object.values(openCtdBy[s.id] ?? {}).some(v => v !== '') ? ' · set for this cast' : ''}</summary>
+                      <Instrument target={s.id} station={s} />
+                    </details>
+                  )}
                 </div>
               )
             })}

@@ -4,7 +4,7 @@
 import { create } from 'zustand'
 import { parseCnv, decodeCnv, stationName, naturalCompare, downcastOnly, deepest, positionFromColumns, suspiciousChannels, type Cast } from './lib/cnv'
 import { parseCoordinate, haversineKm } from './lib/geo'
-import { isOpenCtd, parseOpenCtd } from './lib/openctd'
+import { isOpenCtd, parseOpenCtd, type OpenCtdCalibration, type OpenCtdInfo } from './lib/openctd'
 import { stationColor, type Clr } from './lib/colors'
 
 export interface Station {
@@ -20,7 +20,25 @@ export interface Station {
   color: string
   deepest: number | null
   dropped: number        // rows removed by the downcast cut, 0 if untouched
+  // OpenCTD logs hold raw sensor readings, so the cast is worked out from
+  // them. The text is kept so it can be worked out again when the instrument
+  // settings change; `info` is what the file itself suggested.
+  raw?: string
+  info?: OpenCtdInfo
 }
+
+// What the user types about their instrument. Blank means "inherit": a
+// station's own box first, then the one that applies to every OpenCTD cast,
+// then what the file suggests.
+export interface CalText {
+  surfacePressure: string
+  tempOffset: string
+  thermistors: '' | 'median' | 'mean'
+  latitude: string
+  water: '' | 'sea' | 'fresh'
+  sheet: '' | 'on' | 'off'
+}
+export const BLANK_CAL: CalText = { surfacePressure: '', tempOffset: '', thermistors: '', latitude: '', water: '', sheet: '' }
 
 // A waypoint routes the line from a station towards the next one on the
 // transect, so the distance runs through it instead of straight across land.
@@ -69,6 +87,10 @@ export interface Settings {
   profileGraphTheme: GraphTheme
   graphsPerRow: number            // 1 to 4
   profileGrid: boolean            // grid lines inside the profile graphs
+  // instrument settings for OpenCTD casts: one for all of them, and any a
+  // single station overrides, by station id
+  openCtdAll: CalText
+  openCtdBy: Record<string, CalText>
   showPoints: boolean             // a dot on every reading, on the profile and cast graphs
   pointSize: number               // 1 to 12
   // extra graphs of one variable against another (or depth), e.g. Temperature vs Salinity
@@ -112,6 +134,8 @@ interface State {
   moveInOrder: (from: number, to: number) => void
   autoOrder: () => void
   setSettings: (patch: Partial<Settings>) => void
+  // id of an OpenCTD station, or '*' for every one of them
+  setCalibration: (target: string, patch: Partial<CalText>) => void
   dismissNotices: () => void
 }
 
@@ -122,6 +146,7 @@ const DEFAULT_SETTINGS: Settings = {
   variables: {}, depthMin: '', depthMax: '', lineShape: 'spline', legendPos: 'right',
   yVariable: 'depth', yInvert: true, yLabelMode: 'side', profileTitles: true, profileTitleText: {},
   profileGraphTheme: effectiveTheme('system'), graphsPerRow: 3, profileGrid: false, showPoints: false, pointSize: 4, customPairs: [],
+  openCtdAll: { ...BLANK_CAL }, openCtdBy: {},
   castStation: '', castAll: true, castVariables: {}, castTitleText: {},
   sectionVariables: { Temperature: true }, contourBanded: true, contourInterval: {}, rangeMode: 'fixed', seafloorSource: 'casts',
   palettes: {}, showMap: true, mapStyle: 'ocean', sectionTitles: true, sectionTitleText: {}, sectionGraphTheme: effectiveTheme('system'),
@@ -193,6 +218,56 @@ function reconcile(t: TransectState, stations: Station[]): TransectState {
   return { order, arranged, on, labels, waypoints }
 }
 
+// ---- OpenCTD instrument settings -------------------------------------------
+// What applies to one station: its own boxes first, then the ones set for
+// every OpenCTD cast, then what the file itself suggested.
+export function mergedCal(settings: Settings, id: string): CalText {
+  const all = settings.openCtdAll ?? BLANK_CAL
+  const own = settings.openCtdBy?.[id] ?? BLANK_CAL
+  const pick = <K extends keyof CalText>(k: K): CalText[K] => (own[k] !== '' ? own[k] : all[k])
+  return {
+    surfacePressure: pick('surfacePressure'), tempOffset: pick('tempOffset'), thermistors: pick('thermistors'),
+    latitude: pick('latitude'), water: pick('water'), sheet: pick('sheet'),
+  }
+}
+
+// Latitude falls back to the position typed for the map, which is the one
+// the depth formula wants.
+function toCal(t: CalText, stationLat: number | null): OpenCtdCalibration {
+  const n = (s: string) => { const v = parseFloat(s); return Number.isFinite(v) ? v : null }
+  return {
+    surfacePressure: n(t.surfacePressure),
+    tempOffset: n(t.tempOffset) ?? 0,
+    thermistors: t.thermistors === '' ? 'median' : t.thermistors,
+    latitude: n(t.latitude) ?? stationLat ?? 45,
+    fresh: t.water === 'fresh',
+    sheet: t.sheet === 'on',
+  }
+}
+
+// Work a cast out again from the log file it came from, with the settings it
+// now carries. Only OpenCTD stations keep their file, so only they can move.
+function rederive(st: Station, settings: Settings): Station {
+  if (!st.raw) return st
+  try {
+    const r = parseOpenCtd(st.raw, st.file, toCal(mergedCal(settings, st.id), st.lat))
+    const cut = downcastOnly(r.cast)
+    return { ...st, cast: cut.cast, info: r.info, deepest: deepest(cut.cast), dropped: cut.dropped }
+  } catch { return st }
+}
+
+// What the panel says it did, built from the same values the parser used.
+export function calSummary(st: Station, settings: Settings): string {
+  if (!st.info) return ''
+  const t = mergedCal(settings, st.id), c = toCal(t, st.lat)
+  const p = c.surfacePressure ?? st.info.surfacePressure
+  const where = c.surfacePressure !== null && c.surfacePressure !== undefined ? 'yours' : st.info.inAir ? 'lowest reading' : 'standard atmosphere'
+  const temp = st.info.thermistors > 1 ? `${c.thermistors} of ${st.info.thermistors} thermistors` : 'one thermistor'
+  const off = c.tempOffset ? `${c.tempOffset > 0 ? '+' : ''}${c.tempOffset} °C` : 'no offset'
+  const water = c.sheet ? 'OpenCTD spreadsheet settings' : c.fresh ? 'fresh water' : `seawater at ${c.latitude}°`
+  return `surface ${p.toFixed(1)} mbar (${where}) · ${temp}, ${off} · ${water}`
+}
+
 // ---- sessionStorage mirror -------------------------------------------------
 const KEY = 'ctd-grapher-v1'
 interface Saved { stations: (Omit<Station, 'cast'> & { cast: Omit<Cast, 'data'> & { data: number[][] } })[]; transect: TransectState; settings: Settings; nextId: number }
@@ -250,12 +325,19 @@ export const useStore = create<State>((set, get) => ({
     let stations = [...get().stations]
     for (const f of files) {
       let cast: Cast
+      let rawText: string | undefined, info: OpenCtdInfo | undefined
       const text = decodeCnv(f.buffer)
       if (/\.cnv$/i.test(f.name)) {
         try { cast = parseCnv(text, f.name) } catch (e) { notices.push((e as Error).message); continue }
         if (!cast.nrows) { notices.push(`${f.name}: no data rows after *END*`); continue }
       } else if (/\.(csv|txt)$/i.test(f.name) && isOpenCtd(text)) {
-        try { const r = parseOpenCtd(text, f.name); cast = r.cast; notices.push(`${f.name}: OpenCTD log, ${r.notes.join('; ')}`) } catch (e) { notices.push((e as Error).message); continue }
+        // a new log picks up whatever is set for every OpenCTD cast; its own
+        // boxes are empty until someone fills them in
+        try {
+          const r = parseOpenCtd(text, f.name, toCal(mergedCal(get().settings, ''), null))
+          cast = r.cast; rawText = text; info = r.info
+          notices.push(`${f.name}: OpenCTD log, ${r.notes.join('; ')}`)
+        } catch (e) { notices.push((e as Error).message); continue }
       } else { notices.push(`${f.name}: not a Sea-Bird .cnv or an OpenCTD .csv, skipped`); continue }
       let dropped = 0
       try {
@@ -280,6 +362,7 @@ export const useStore = create<State>((set, get) => ({
         latText: existing?.latText ?? (lat === null ? '' : lat.toFixed(5)),
         lonText: existing?.lonText ?? (lon === null ? '' : lon.toFixed(5)),
         active: existing?.active ?? true, color: '', deepest: deepest(cast), dropped,
+        raw: rawText, info,
       }
       if (existing) { stations = stations.map(s => (s.id === existing.id ? st : s)); notices.push(`${name}: replaced by the newer upload`) }
       else stations.push(st)
@@ -307,11 +390,22 @@ export const useStore = create<State>((set, get) => ({
   }),
 
   setPosition: (id, latText, lonText) => set(s => {
-    const stations = s.stations.map(x => (x.id === id ? {
-      ...x, latText, lonText,
-      lat: parseCoordinate(latText, 'lat'), lon: parseCoordinate(lonText, 'lon'),
-    } : x))
+    const stations = s.stations.map(x => {
+      if (x.id !== id) return x
+      const moved = { ...x, latText, lonText, lat: parseCoordinate(latText, 'lat'), lon: parseCoordinate(lonText, 'lon') }
+      // gravity varies with latitude, so an OpenCTD depth follows the
+      // position typed here unless a latitude was given for the instrument
+      return moved.raw && mergedCal(s.settings, id).latitude === '' ? rederive(moved, s.settings) : moved
+    })
     return { stations, transect: reconcile(s.transect, stations) }
+  }),
+
+  setCalibration: (target, patch) => set(s => {
+    const settings: Settings = target === '*'
+      ? { ...s.settings, openCtdAll: { ...s.settings.openCtdAll, ...patch } }
+      : { ...s.settings, openCtdBy: { ...s.settings.openCtdBy, [target]: { ...(s.settings.openCtdBy[target] ?? BLANK_CAL), ...patch } } }
+    const stations = s.stations.map(st => (st.raw && (target === '*' || st.id === target) ? rederive(st, settings) : st))
+    return { settings, stations, transect: reconcile(s.transect, stations) }
   }),
 
   // Rewrites every typed value so it carries the hemisphere as a letter.

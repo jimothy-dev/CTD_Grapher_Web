@@ -179,3 +179,12 @@ input.inline::placeholder { color: var(--muted); opacity: 1; }
 .about { max-width: 92ch; font-size: 16px; }
 .about ul { padding-left: 18px; }
 .about li { margin: 4px 0; }
+
+/* OpenCTD instrument settings: folded away under a station, and once above the list */
+.instrument-row { flex: 1 1 100%; margin-top: 2px; }
+.instrument-row > summary { cursor: pointer; font-size: 12px; color: var(--muted); padding: 2px 0; list-style-position: inside; }
+.instrument-row > summary:hover { color: var(--ink); }
+.instrument-row.all { margin: 0 0 12px; }
+.instrument-row.all > summary { font-size: 13px; font-weight: 500; }
+.card.controls.instrument { margin-top: 6px; background: var(--surface-2); gap: 10px 14px; }
+.card.controls.instrument .hint { font-family: var(--sans); font-size: 12px; }

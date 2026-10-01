@@ -10,6 +10,28 @@ export function depthFromPressure(p: number, latitudeDeg = 45): number {
   return ((((-1.82e-15 * p + 2.279e-10) * p - 2.2512e-5) * p + 9.72659) * p) / g
 }
 
+// Depth from pressure in fresh water: the pressure over the weight of a
+// column of fresh water. Lakes and rivers, and what OpenCTD's own
+// spreadsheet applies everywhere. Pressure in dbar, depth in m.
+export function freshDepthFromPressure(p: number): number {
+  return (p * 1e4) / (1000 * 9.81)
+}
+
+// PSS-78 written exactly as OpenCTD's processing spreadsheet writes it:
+// 42900 uS/cm as the reference rather than the defining 42914, no pressure
+// term, and the logged temperature used as is rather than converted to
+// IPTS-68. Reproduces that workbook to 1e-14 PSU, so a cast here can be
+// checked against one a colleague processed in the template.
+export function openCtdSheetSalinity(condMScm: number, tC: number): number {
+  if (!(condMScm > 0)) return NaN
+  const R = (condMScm * 1000) / 42900
+  const rt = 0.6766097 + 0.0200564 * tC + 0.0001104259 * tC ** 2 - 6.9698e-7 * tC ** 3 + 1.0031e-9 * tC ** 4
+  const Rt = R / rt
+  const s = Math.sqrt(Math.max(Rt, 0))
+  const dS = ((tC - 15) / (1 + 0.0162 * (tC - 15))) * (0.0005 - 0.0056 * s - 0.0066 * Rt - 0.0375 * Rt * s + 0.0636 * Rt ** 2 - 0.0144 * Rt ** 2 * s)
+  return 0.008 - 0.1692 * s + 25.3851 * Rt + 14.0941 * Rt * s - 7.0261 * Rt ** 2 + 2.7081 * Rt ** 2 * s + dS
+}
+
 // Practical salinity from conductivity (mS/cm), temperature (deg C, ITS-90)
 // and pressure (dbar): PSS-78 (UNESCO 1983 Technical Paper 44). Valid for
 // 2 to 42; 42.914 mS/cm at 15 degrees and 0 dbar is 35 by definition.
