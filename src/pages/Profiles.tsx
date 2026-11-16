@@ -41,15 +41,15 @@ export default function Profiles() {
   }, [active])
   // internal name -> what to plot and what to call it (custom labels apply to variables and channels alike)
   const named = (name: string) => labelFor(name, settings.variableLabels)
-  const choice = (name: string): { name: string; shorts: string[]; label?: string } => {
+  const choice = (name: string): { name: string; shorts: string[]; label?: string; units?: string } => {
     if (name.startsWith('col:')) {
       const c = channels.find(ch => ch.short.toLowerCase() === name.slice(4).toLowerCase())
       if (!c) return DEPTH
       const dflt = c.desc ? `${c.desc} (${c.short})` : c.short
-      return { name: dflt, shorts: [c.short.toLowerCase()], label: labelFor(name, settings.variableLabels, dflt) }
+      return { name: dflt, shorts: [c.short.toLowerCase()], label: labelFor(name, settings.variableLabels, dflt), units: settings.variableUnits[name] }
     }
     const v = variables.find(v => v.name === name)
-    return v ? { name: v.name, shorts: v.shorts, label: named(v.name) } : DEPTH
+    return v ? { name: v.name, shorts: v.shorts, label: named(v.name), units: settings.variableUnits[v.name] } : DEPTH
   }
   const yChoice = useMemo(() => choice(settings.yVariable),
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -60,10 +60,10 @@ export default function Profiles() {
 
   const figures = useMemo(() => variables
     .filter(v => isOn(v.name, v.on) && v.name !== yChoice.name)
-    .map(v => buildProfile(profileStations, { variable: v.name, label: named(v.name), shorts: v.shorts, y: yChoice, yInvert: settings.yInvert, ...common }))
+    .map(v => buildProfile(profileStations, { variable: v.name, label: named(v.name), units: settings.variableUnits[v.name], shorts: v.shorts, y: yChoice, yInvert: settings.yInvert, ...common }))
     .filter((f): f is NonNullable<typeof f> => f !== null),
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  [profileStations, variables, settings.variables, settings.variableLabels, dmin, dmax, settings.lineShape, settings.legendPos, settings.yInvert, settings.yLabelMode, settings.profileGrid, settings.showPoints, settings.pointSize, yChoice])
+  [profileStations, variables, settings.variables, settings.variableLabels, settings.variableUnits, dmin, dmax, settings.lineShape, settings.legendPos, settings.yInvert, settings.yLabelMode, settings.profileGrid, settings.showPoints, settings.pointSize, yChoice])
 
   // Custom pairs: any variable against any other, or against depth. Depth
   // reads downward as usual; a variable on Y reads upward.
@@ -72,16 +72,16 @@ export default function Profiles() {
     if (x === DEPTH) return null
     const y = choice(p.y)
     if (y.name === x.name) return null
-    const fig = buildProfile(profileStations, { variable: x.name, label: x.label, shorts: x.shorts, y, yInvert: y.name === 'Depth' ? settings.yInvert : false, ...common })
+    const fig = buildProfile(profileStations, { variable: x.name, label: x.label, units: x.units, shorts: x.shorts, y, yInvert: y.name === 'Depth' ? settings.yInvert : false, ...common })
     return fig ? { key: `${p.x}|${p.y}`, pair: p, fig } : null
   }).filter((p): p is NonNullable<typeof p> => p !== null),
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  [profileStations, variables, channels, settings.customPairs, settings.variableLabels, dmin, dmax, settings.lineShape, settings.legendPos, settings.yInvert, settings.yLabelMode, settings.profileGrid, settings.showPoints, settings.pointSize])
+  [profileStations, variables, channels, settings.customPairs, settings.variableLabels, settings.variableUnits, dmin, dmax, settings.lineShape, settings.legendPos, settings.yInvert, settings.yLabelMode, settings.profileGrid, settings.showPoints, settings.pointSize])
 
   // labels can be typed for every variable present and for any channel an extra graph uses
   const labelItems = [
-    ...variables.map(v => ({ key: v.name, caption: v.name })),
-    ...[...new Set(settings.customPairs.flatMap(p => [p.x, p.y]).filter(k => k.startsWith('col:')))].map(k => ({ key: k, caption: k.slice(4) })),
+    ...variables.map(v => ({ key: v.name, caption: v.name, units: v.units })),
+    ...[...new Set(settings.customPairs.flatMap(p => [p.x, p.y]).filter(k => k.startsWith('col:')))].map(k => ({ key: k, caption: k.slice(4), units: channels.find(c => c.short.toLowerCase() === k.slice(4).toLowerCase())?.units })),
   ]
 
   if (!active.length) return <div className="empty">No active stations. <Link to="/">Add or switch some on.</Link></div>

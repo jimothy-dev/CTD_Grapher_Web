@@ -6,10 +6,11 @@ import { labelWithUnits, prettyUnits, unitFactor } from './units'
 import type { LegendPos, YLabelMode } from '../store'
 
 export interface ProfileStation { id: string; name: string; color: string; cast: Cast }
-export interface YChoice { name: string; shorts: string[]; label?: string }          // name 'Depth' means the depth channel
+export interface YChoice { name: string; shorts: string[]; label?: string; units?: string }   // name 'Depth' means the depth channel; units typed by hand replace the files'
 export interface ProfileOptions {
   variable: string
   label?: string        // what to call it on the graph; defaults to the variable name
+  units?: string        // the unit shown; defaults to the one the files carry
   shorts: string[]
   y: YChoice
   depthMin: number | null
@@ -86,12 +87,17 @@ export function buildProfile(stations: ProfileStation[], o: ProfileOptions): Pro
   const warnings: string[] = []
   if (convertedX.length) warnings.push(`converted to ${prettyUnits(xUnits, false)}: ${convertedX.join(', ')}`)
   if (convertedY.length) warnings.push(`converted to ${prettyUnits(yUnits, false)}: ${convertedY.join(', ')}`)
-  const xm = unitMismatch(xUnitsBy, xName); if (xm) warnings.push(xm)
-  const ym = unitMismatch(yUnitsBy, yLabelBase); if (ym) warnings.push(ym)
+  // A unit typed by hand renames the unit without converting anything, so a
+  // real disagreement between the files is still reported, just differently.
+  const typedX = o.units?.trim() ?? '', typedY = o.y.units?.trim() ?? ''
+  const xm = unitMismatch(xUnitsBy, xName)
+  if (xm) warnings.push(typedX ? `${xName}: shown as ${prettyUnits(typedX, false)} because you set that unit, but the casts do not agree and nothing was converted` : xm)
+  const ym = unitMismatch(yUnitsBy, yLabelBase)
+  if (ym) warnings.push(typedY ? `${yLabelBase}: shown as ${prettyUnits(typedY, false)} because you set that unit, but the casts do not agree and nothing was converted` : ym)
   if (pressureFor.length && pressureFor.length < data.length) warnings.push(`pressure (db) stands in for depth at ${pressureFor.join(', ')}`)
 
-  const xLabel = labelWithUnits(xName, xUnits)
-  const yLabel = labelWithUnits(yLabelBase, yUnits)
+  const xLabel = labelWithUnits(xName, typedX || xUnits)
+  const yLabel = labelWithUnits(yLabelBase, typedY || yUnits)
   const invert = o.yInvert
   const xTop = invert    // read from the top when depth increases downward
   const margin = { l: o.legendPos === 'left' ? 170 : 64, r: o.legendPos === 'right' ? 20 : 20, t: xTop ? 80 : 40, b: xTop ? (o.legendPos === 'bottom' ? 80 : 40) : (o.legendPos === 'bottom' ? 110 : 70) }

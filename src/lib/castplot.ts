@@ -8,7 +8,7 @@ import { findColumn, depthColumn, type Cast } from './cnv'
 import { labelWithUnits, prettyUnits } from './units'
 import { niceStep, decimalsFor } from './colors'
 
-export interface CastVariable { name: string; shorts: string[]; label: string }
+export interface CastVariable { name: string; shorts: string[]; label: string; units?: string }   // units typed by hand replace the files'
 export interface CastPlotOptions {
   variables: CastVariable[]
   depthMin: number | null
@@ -61,12 +61,13 @@ export function buildCastPlot(cast: Cast, o: CastPlotOptions): CastPlotResult | 
     const decimals = decimalsFor(step)
     const tickvals: number[] = []
     for (let t = r0; t <= r1 + step * 1e-6; t += step) tickvals.push(+t.toFixed(decimals + 2))
-    axes.push({ label: labelWithUnits(v.label, col.units), color, range: [r0, r1], tickvals, ticktext: tickvals.map(t => t.toFixed(decimals)) })
+    const shownUnits = v.units?.trim() || col.units
+    axes.push({ label: labelWithUnits(v.label, shownUnits), color, range: [r0, r1], tickvals, ticktext: tickvals.map(t => t.toFixed(decimals)) })
     data.push({
       type: 'scatter', mode: o.showPoints ? 'lines+markers' : 'lines', name: v.label, x: pts.map(p => p[0]), y: pts.map(p => p[1]),
       xaxis: n === 0 ? 'x' : `x${n + 1}`, line: { color, width: 2, shape: o.lineShape, smoothing: 0.6 },
       marker: { color, size: o.pointSize },
-      hovertemplate: `%{x:.3f} ${prettyUnits(col.units)}<extra>${v.label}</extra>`,
+      hovertemplate: `%{x:.3f} ${prettyUnits(shownUnits)}<extra>${v.label}</extra>`,
     } as Partial<PlotData>)
   })
   if (!data.length) return null

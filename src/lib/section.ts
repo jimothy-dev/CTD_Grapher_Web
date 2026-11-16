@@ -56,6 +56,7 @@ export function routeDistances(stations: SectionStation[]): Route {
 export interface SectionOptions {
   variable: string
   label?: string        // what to call it on the graph; defaults to the variable name
+  units?: string        // the unit shown; defaults to the one the files carry
   shorts: string[]
   depthMin?: number | null
   depthMax?: number | null
@@ -189,7 +190,10 @@ export function buildSection(stations: SectionStation[], opts: SectionOptions): 
   if (converted.length) notes.push(`converted to ${prettyUnits(units, false)}: ${converted.join(', ')}`)
   const shown = opts.label ?? opts.variable
   const um = unitMismatch(profs.map((p, i) => ({ name: stations[i].label, units: p!.units })), shown)
-  if (um) warnings.push(um)
+  // a unit typed by hand renames the unit without converting anything, so a
+  // real disagreement between the casts is still reported, just differently
+  const typedSec = opts.units?.trim() ?? ''
+  if (um) warnings.push(typedSec ? `${shown}: shown as ${prettyUnits(typedSec, false)} because you set that unit, but the casts do not agree and nothing was converted` : um)
   const pressure = profs.filter(p => p!.depthLabel.startsWith('Pressure')).length
   if (pressure && pressure < profs.length) warnings.push(`pressure (db) stands in for depth at ${stations.filter((_, i) => profs[i]!.depthLabel.startsWith('Pressure')).map(s => s.label).join(', ')}`)
 
@@ -365,8 +369,9 @@ export function buildSection(stations: SectionStation[], opts: SectionOptions): 
 
   const span = Math.max(bot - surface, 1e-9)
   const axisBottom = bot + span * 0.02
-  const unitText = prettyUnits(units)
-  const cbTitle = opts.colorbarName ? labelWithUnits(shown, units) : (unitText || shown)
+  const typedUnits = opts.units?.trim() ?? ''
+  const unitText = prettyUnits(typedUnits || units)
+  const cbTitle = opts.colorbarName ? labelWithUnits(shown, typedUnits || units) : (unitText || shown)
 
   const data: Partial<PlotData>[] = [{
     type: 'contour', x: xs, y: ys, z, colorscale, zmin: range[0], zmax: range[1], zauto: false,

@@ -188,3 +188,4 @@ input.inline::placeholder { color: var(--muted); opacity: 1; }
 .instrument-row.all > summary { font-size: 13px; font-weight: 500; }
 .card.controls.instrument { margin-top: 6px; background: var(--surface-2); gap: 10px 14px; }
 .card.controls.instrument .hint { font-family: var(--sans); font-size: 12px; }
+.field input.unit-box { width: 92px; font-size: 13px; padding: 5px 8px; font-family: var(--mono); }

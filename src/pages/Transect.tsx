@@ -166,7 +166,7 @@ export default function Transect() {
     return {
       variable: v.name,
       result: buildSection(chosen, {
-        variable: v.name, label: labelFor(v.name, settings.variableLabels), shorts: v.shorts, interval: num(settings.contourInterval[v.name] ?? ''), banded: settings.contourBanded,
+        variable: v.name, label: labelFor(v.name, settings.variableLabels), units: settings.variableUnits[v.name], shorts: v.shorts, interval: num(settings.contourInterval[v.name] ?? ''), banded: settings.contourBanded,
         colorscale: pal && pal.clr.stops.length ? pal.clr.stops : null,
         range: levels ? [levels[0], levels[levels.length - 1]] : settings.rangeMode === 'auto' ? 'auto' : null,
         colorbarName: settings.colorbarName,
@@ -386,7 +386,7 @@ export default function Transect() {
               </label>
             ))}
           </div>
-          <div style={{ marginBottom: 10 }}><LabelEditor items={variables.filter(v => isOn(v.name)).map(v => ({ key: v.name, caption: v.name }))} /></div>
+          <div style={{ marginBottom: 10 }}><LabelEditor items={variables.filter(v => isOn(v.name)).map(v => ({ key: v.name, caption: v.name, units: v.units }))} /></div>
           <div className="row">
             <div className="field" title="Smooth: the colour varies continuously, with contour lines drawn over it. Banded: one colour between each pair of contours, a filled contour plot.">shading{seg(settings.contourBanded ? 'banded' : 'smooth', [['smooth', 'smooth'], ['banded', 'banded']], v => setSettings({ contourBanded: v === 'banded' }))}</div>
           </div>

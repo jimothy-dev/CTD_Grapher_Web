@@ -8,3 +8,10 @@ export const DEFAULT_LABELS: Record<string, string> = {
 export function labelFor(name: string, custom: Record<string, string>, fallback?: string): string {
   return custom[name]?.trim() || DEFAULT_LABELS[name] || fallback || name
 }
+
+// A unit typed by hand, which replaces what the files say wherever that unit
+// is shown. It renames the unit; it never converts the values, so casts that
+// really are in different units are still reported under the graph.
+export function unitsFor(name: string, custom: Record<string, string>, fromFile: string): string {
+  return custom[name]?.trim() || fromFile
+}

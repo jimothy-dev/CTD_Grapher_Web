@@ -87,6 +87,8 @@ export interface Settings {
   profileGraphTheme: GraphTheme
   graphsPerRow: number            // 1 to 4
   profileGrid: boolean            // grid lines inside the profile graphs
+  // units typed over what the files say, by the same keys as variableLabels
+  variableUnits: Record<string, string>
   // instrument settings for OpenCTD casts: one for all of them, and any a
   // single station overrides, by station id
   openCtdAll: CalText
@@ -142,7 +144,7 @@ interface State {
 const SETTINGS_VERSION = 4
 const DEFAULT_SETTINGS: Settings = {
   version: SETTINGS_VERSION,
-  variableLabels: {},
+  variableLabels: {}, variableUnits: {},
   variables: {}, depthMin: '', depthMax: '', lineShape: 'spline', legendPos: 'right',
   yVariable: 'depth', yInvert: true, yLabelMode: 'side', profileTitles: true, profileTitleText: {},
   profileGraphTheme: effectiveTheme('system'), graphsPerRow: 3, profileGrid: false, showPoints: false, pointSize: 4, customPairs: [],

@@ -31,13 +31,13 @@ export default function Cast() {
   const figures = useMemo(() => shown.map(s => ({
     station: s,
     result: buildCastPlot(s.cast, {
-      variables: variables.filter(v => isOn(v.name)).map(v => ({ name: v.name, shorts: v.shorts, label: named(v.name) })),
+      variables: variables.filter(v => isOn(v.name)).map(v => ({ name: v.name, shorts: v.shorts, label: named(v.name), units: settings.variableUnits[v.name] })),
       depthMin: dmin, depthMax: dmax, lineShape: settings.lineShape, showGrid: settings.profileGrid,
       showPoints: settings.showPoints, pointSize: settings.pointSize,
     }),
   })),
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  [shown, variables, settings.castVariables, settings.variableLabels, dmin, dmax, settings.lineShape, settings.profileGrid, settings.showPoints, settings.pointSize])
+  [shown, variables, settings.castVariables, settings.variableLabels, settings.variableUnits, dmin, dmax, settings.lineShape, settings.profileGrid, settings.showPoints, settings.pointSize])
 
   if (!active.length) return <div className="empty">No active stations. <Link to="/">Add or switch some on.</Link></div>
 
@@ -60,7 +60,7 @@ export default function Cast() {
           </label>
         ))}
       </div>
-      <LabelEditor items={variables.map(v => ({ key: v.name, caption: v.name }))} />
+      <LabelEditor items={variables.map(v => ({ key: v.name, caption: v.name, units: v.units }))} />
       <div className="card controls">
         <label className="field">station
           <select value={settings.castAll ? '*' : chosenId} onChange={e => (e.target.value === '*' ? setSettings({ castAll: true }) : setSettings({ castAll: false, castStation: e.target.value }))}>

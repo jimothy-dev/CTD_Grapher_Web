@@ -27,7 +27,7 @@ A prior version, as a Google Colab notebook: [CTD_Grapher_v2](https://github.com
 - Casts are checked against usual ranges (salinity 0 to 60, temperature -3 to 45 °C, and so on) and flagged when they fall outside; nothing is corrected.
 - The "NOAA NCEI DEMs" and "EMODnet" seafloor options read public depth maps along your line (NOAA worldwide, EMODnet for European seas). Where a cast reached deeper than the map says, the cast wins. EMODnet measures depth from low tide and your casts from that day's sea surface, so its seafloor can sit a metre or two off.
 - Fixed color ranges are chosen for Puget Sound and temperate estuaries; switch to "this survey" or load a palette elsewhere.
-- Two instruments may log the same variable in different units (oxygen in mg/L and mL/L, say). The shared channel is preferred, and a remaining mismatch is flagged under the graph rather than converted.
+- Two instruments may log the same variable in different units (oxygen in mg/L and mL/L, say). The shared channel is preferred, and a remaining mismatch is flagged under the graph rather than converted. You can also type the unit yourself beside the label; that renames it without converting anything.
 - Tested on the example casts, on OpenCTD field casts, and on 20 public files from SBE 9, 19, 19plus, 25, 25plus and 37 instruments. Send a `.cnv` that does not load.
 - Palette readers were checked against real files for GMT, Ferret, NCL, ODV, ncWMS, SNAP, GIMP, ParaView, QGIS and GRASS, but only against documented examples for Surfer `.clr`/`.lvl` and ESRI `.clr`. The note under a loaded palette says what was read, so a misread shows; a file that cannot be read is refused and the colours stay as they were.
 

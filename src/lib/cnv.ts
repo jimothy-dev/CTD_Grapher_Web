@@ -36,8 +36,35 @@ export function decodeCnv(buffer: ArrayBuffer): string {
   return new TextDecoder('windows-1252').decode(buffer)
 }
 
+// Some .cnv files arrive after a round trip through a spreadsheet: every run
+// of spaces has become a tab, and any token holding a comma has been wrapped
+// in quotes, so `Temperature [ITS-90, deg C]` reads back as
+// `Temperature "[ITS-90," deg C]` and the units come out as `ITS-90," deg C`.
+// Two casts from one survey then look like different instruments. Reading
+// such a line back as tab-separated cells under the usual quoting rules and
+// rejoining them with single spaces restores it. Sea-Bird never writes tabs,
+// so a line without one is already fine and is left exactly as it is.
+export function unmangleTabs(line: string): string {
+  if (!line.includes('\t')) return line
+  const cells: string[] = []
+  let cur = '', quoted = false
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i]
+    if (quoted) {
+      if (c !== '"') cur += c
+      else if (line[i + 1] === '"') { cur += '"'; i++ }      // a doubled quote is one quote
+      else quoted = false
+    } else if (c === '"') quoted = true
+    else if (c === '\t') { cells.push(cur); cur = '' }
+    else cur += c
+  }
+  cells.push(cur)
+  while (cells.length && cells[cells.length - 1] === '') cells.pop()   // trailing empty columns
+  return cells.join(' ')
+}
+
 export function parseCnv(text: string, filename = 'cast.cnv'): Cast {
-  const lines = text.split(/\r?\n/)
+  const lines = text.split(/\r?\n/).map(unmangleTabs)
   const columns: Column[] = []
   const meta: CastMeta = {
     filename, badFlag: -9.99e-29, startTime: null, lat: null, lon: null,
